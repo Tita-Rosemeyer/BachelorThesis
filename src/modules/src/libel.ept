@@ -102,6 +102,28 @@ const thrust_min: float = 20000.0
 
 
 
+const pi: float = 3.14159265358979323846
+const one: float = 1.0
+const two: float = 2.0
+const four: float = 4.0
+
+
+
+fun lpf2pSetCutoffFreq(sample_freq, cutoff_freq: float) returns (b0, b1, b2, a1, a2: float)
+var fr, ohm, c: float;
+let
+    fr = sample_freq /. cutoff_freq;
+    ohm = tan( pi /. fr );
+    c = one +. two *. cos( pi /. four ) *. ohm +. ohm *. ohm;
+    b0 = ohm *. ohm /. c;
+    b1 = two *. b0;
+    b2 = b0;
+    a1 = two *. ( ohm *. ohm -. one ) /. c;
+    a2 = ( one -. two *. cos( pi /. four ) *. ohm +. ohm *. ohm ) /. c;
+tel
+
+
+
 node constrain<<min, max : float>>(input : float) returns (output : float)
 let
     output = 
