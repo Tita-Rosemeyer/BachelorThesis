@@ -172,6 +172,86 @@ let
     output = opt_constrain<<oLimit>>(kp *. err +. ki *. integ +. kd *. deriv);
 tel
 
+(** Position Controller *)
+
+type vec3 = {
+     x : float;
+     y : float;
+     z : float
+}
+
+type vector = vec3
+type point = vec3
+type velocity = vec3
+type acc = vec3
+type axis3f = vec3
+
+type attitude = {
+     roll : float;
+     pitch : float;
+     yaw : float
+}
+
+type quaternion = {
+     qx : float;
+     qy : float;
+     qz : float;
+     qw : float
+}
+
+type stab_mode = Disabled | Abs | Velocity
+
+type mode = {
+     mx : stab_mode;
+     my : stab_mode;
+     mz : stab_mode;
+     mroll : stab_mode;
+     mpitch : stab_mode;
+     myaw : stab_mode;
+     mquat : stab_mode
+}
+
+type baro = {
+     pressure : float;
+     temperature : float;
+     asl : float
+}
+
+type sensor_data = {
+     acc : axis3f;
+     gyro : axis3f;
+     mag : axis3f;
+     baro : baro
+}
+
+type setpoint = {
+     attitude : attitude;
+     attitude_rate : attitude;
+     attitude_quat : quaternion;
+     thrust : float;
+     position : point;
+     velocity : velocity;
+     acceleration : acc;
+     velocity_body : bool;
+     mode : mode
+}
+
+type state_t = {
+     st_attitude : attitude;
+     st_attitude_quaternion : quaternion;
+     st_position : point;
+     st_velocity : velocity;
+     st_acc : acc
+}
+
+node position_controller(sens : sensor_data; setpin : setpoint; st : state_t)
+returns (thrust : float; att : attitude; setpout : setpoint)
+let
+    thrust = 0.0;
+    att = { roll = 0.0; pitch = 0.0; yaw = 0.0 };
+    setpout = setpin;
+tel
+
 (** Power distribution *)
 
 const max_uint16 : int = 0xffff
@@ -201,3 +281,7 @@ let
     m3 = min_idle(limitUint16(t + r - p + yaw));
     m4 = min_idle(limitUint16(t + r + p - yaw));
 tel
+
+const idX : int = 0
+const idY : int = 1
+const idZ : int = 2
