@@ -1,0 +1,3 @@
+node main() returns (out : bool)
+let out = true fby false;
+tel

@@ -48,6 +48,7 @@ obj-y += sensfusion6.o
 obj-y += serial_4way_avrootloader.o
 obj-y += serial_4way.o
 obj-y += sound_cf2.o
+obj-y += libel.o
 obj-y += stabilizer.o
 obj-y += static_mem.o
 obj-y += supervisor.o

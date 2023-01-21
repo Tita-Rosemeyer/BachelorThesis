@@ -255,6 +255,7 @@ STRIP	= $(CROSS_COMPILE)strip
 OBJCOPY	= $(CROSS_COMPILE)objcopy
 OBJDUMP	= $(CROSS_COMPILE)objdump
 SIZE    = $(CROSS_COMPILE)size
+HEPTC   = heptc
 
 ifneq ($(OOT_USES_CXX),)
 LD		= $(CROSS_COMPILE)g++
@@ -291,7 +292,7 @@ KERNELVERSION = $(VERSION)$(if $(PATCHLEVEL),.$(PATCHLEVEL)$(if $(SUBLEVEL),.$(S
 
 export VERSION PATCHLEVEL SUBLEVEL KERNELVERSION
 export ARCH CONFIG_SHELL HOSTCC HOSTCFLAGS CROSS_COMPILE AS LD CC CXX
-export CPP AR NM STRIP OBJCOPY OBJDUMP
+export HEPTC CPP AR NM STRIP OBJCOPY OBJDUMP
 export MAKE AWK PERL PYTHON
 export HOSTCXX HOSTCXXFLAGS CHECK CHECKFLAGS
 
@@ -783,6 +784,8 @@ image_name:
 build-dir  = $(patsubst %/,%,$(dir $@))
 target-dir = $(dir $@)
 
+%.c: %.ept prepare scripts FORCE
+	$(Q)$(MAKE) $(build)=$(build-dir) $(target-dir)$(notdir $@)
 %.s: %.c prepare scripts FORCE
 	$(Q)$(MAKE) $(build)=$(build-dir) $(target-dir)$(notdir $@)
 %.i: %.c prepare scripts FORCE

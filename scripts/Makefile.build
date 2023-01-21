@@ -303,6 +303,17 @@ $(call multi_depend, $(multi-used-y), .o, -objs -y)
 
 targets += $(multi-used-y)
 
+# Compile Heptagon sources (.ept)
+# ---------------------------------------------------------------------------
+
+quiet_cmd_heptc_c_ept = HEPTC $<
+cmd_heptc_c_ept = \
+	$(HEPTC) -target c -targetpath src/modules/src $<; \
+	mv src/modules/src/libel_c/* src/modules/src/
+
+$(obj)/%.c: $(src)/%.ept
+	$(call if_changed,heptc_c_ept)
+
 # Descending
 # ---------------------------------------------------------------------------
 
