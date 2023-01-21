@@ -1,3 +1,105 @@
+const pid_roll_rate_kp: float = 250.0
+const pid_roll_rate_ki: float = 500.0
+const pid_roll_rate_kd: float = 2.5
+const pid_roll_rate_intergration_limit: float = 33.3
+
+const pid_pitch_rate_kp: float = 250.0
+const pid_pitch_rate_ki: float = 500.0
+const pid_pitch_rate_kd: float = 2.5
+const pid_pitch_rate_intergration_limit: float = 33.3
+
+const pid_yaw_rate_kp: float = 120.0
+const pid_yaw_rate_ki: float = 16.7
+const pid_yaw_rate_kd: float = 0.0
+const pid_yaw_rate_intergration_limit: float = 166.7
+
+const pid_roll_kp: float = 6.0
+const pid_roll_ki: float = 3.0
+const pid_roll_kd: float = 0.0
+const pid_roll_intergration_limit: float = 20.0
+
+const pid_pitch_kp: float = 6.0
+const pid_pitch_ki: float = 3.0
+const pid_pitch_kd: float = 0.0
+const pid_pitch_intergration_limit: float = 20.0
+
+const pid_yaw_kp: float = 6.0
+const pid_yaw_ki: float = 1.0
+const pid_yaw_kd: float = 0.35
+const pid_yaw_intergration_limit: float = 360.0
+
+const default_pid_intergration_limit: float = 5000.0
+const default_pid_output_limit: float = 0.0
+
+const attitude_lpf_cutoff_freq: float = 15.0
+const attitude_lpf_enable: bool = false
+const attitude_lpf_rate_cutoff_freq: float = 30.0
+const attitude_lpf_rate_enable: bool = false
+
+const rate_1000_hz: float = 1000.0
+const rate_500_hz: float = 500.0
+const rate_250_hz: float = 250.0
+const rate_100_hz: float = 100.0
+const rate_50_hz: float = 50.0
+const rate_25_hz: float = 25.0
+
+const rate_main_loop: float = rate_1000_hz
+const attitude_rate: float = rate_500_hz
+const position_rate: float = rate_100_hz
+const rate_hl_commander: float = rate_100_hz
+
+const attitude_update_rate: float = rate_250_hz
+const attitude_update_dt: float = 1.0 /. attitude_update_rate
+
+const pos_update_rate: float = rate_100_hz
+const pos_update_dt: float = 1.0 /. pos_update_rate
+
+const pos_filt_enable: bool = true
+const vel_filt_enable: bool = true
+const pos_filt_cutoff: float = 20.0
+const vel_filt_cutoff: float = 20.0
+const posz_filt_enable: bool = true
+const velz_filt_enable: bool = true
+const posz_filt_cutoff: float = 20.0
+const velz_filt_cutoff: float = 20.0
+
+const pid_dt: float = 1.0 /. position_rate
+
+const pid_vx_kp: float = 25.0
+const pid_vx_ki: float = 1.0
+const pid_vx_kd: float = 0.0
+const pid_vx_dt: float = pid_dt
+
+const pid_vy_kp: float = 25.0
+const pid_vy_ki: float = 1.0
+const pid_vy_kd: float = 0.0
+const pid_vy_dt: float = pid_dt
+
+const pid_vz_kp: float = 25.0
+const pid_vz_ki: float = 15.0
+const pid_vz_kd: float = 0.0
+const pid_vz_dt: float = pid_dt
+
+const pid_x_kp: float = 2.0
+const pid_x_ki: float = 0.0
+const pid_x_kd: float = 0.0
+const pid_x_dt: float = pid_dt
+
+const pid_y_kp: float = 2.0
+const pid_y_ki: float = 0.0
+const pid_y_kd: float = 0.0
+const pid_y_dt: float = pid_dt
+
+const pid_z_kp: float = 2.0
+const pid_z_ki: float = 0.5
+const pid_z_kd: float = 0.0
+const pid_z_dt: float = pid_dt
+
+const thrust_base: float = 36000.0
+const thrust_min: float = 20000.0
+
+
+
 node constrain<<min, max : float>>(input : float) returns (output : float)
 let
     output = 
