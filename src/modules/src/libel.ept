@@ -244,11 +244,11 @@ type state_t = {
      st_acc : acc
 }
 
-node position_controller(sens : sensor_data; setpin : setpoint; st : state_t)
-returns (thrust : float; att : attitude; setpout : setpoint)
+node controller_pid1(setpin : setpoint; st : state_t)
+returns (thrust : float; att_desired : attitude; setpout : setpoint)
 let
     thrust = 0.0;
-    att = { roll = 0.0; pitch = 0.0; yaw = 0.0 };
+    att_desired = { roll = 0.0; pitch = 0.0; yaw = 0.0 };
     setpout = setpin;
 tel
 
