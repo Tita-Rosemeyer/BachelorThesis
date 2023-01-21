@@ -4,34 +4,42 @@ const pid_roll_rate_kp: float = 250.0
 const pid_roll_rate_ki: float = 500.0
 const pid_roll_rate_kd: float = 2.5
 const pid_roll_rate_intergration_limit: float = 33.3
+const pid_roll_rate_intergration_lim: bool = true
 
 const pid_pitch_rate_kp: float = 250.0
 const pid_pitch_rate_ki: float = 500.0
 const pid_pitch_rate_kd: float = 2.5
 const pid_pitch_rate_intergration_limit: float = 33.3
+const pid_pitch_rate_intergration_lim: bool = true
 
 const pid_yaw_rate_kp: float = 120.0
 const pid_yaw_rate_ki: float = 16.7
 const pid_yaw_rate_kd: float = 0.0
 const pid_yaw_rate_intergration_limit: float = 166.7
+const pid_yaw_rate_intergration_lim: bool = true
 
 const pid_roll_kp: float = 6.0
 const pid_roll_ki: float = 3.0
 const pid_roll_kd: float = 0.0
 const pid_roll_intergration_limit: float = 20.0
+const pid_roll_intergration_lim: bool = true
 
 const pid_pitch_kp: float = 6.0
 const pid_pitch_ki: float = 3.0
 const pid_pitch_kd: float = 0.0
 const pid_pitch_intergration_limit: float = 20.0
+const pid_pitch_intergration_lim: bool = true
 
 const pid_yaw_kp: float = 6.0
 const pid_yaw_ki: float = 1.0
 const pid_yaw_kd: float = 0.35
 const pid_yaw_intergration_limit: float = 360.0
+const pid_yaw_intergration_lim: bool = true
 
 const default_pid_intergration_limit: float = 5000.0
+const default_pid_intergration_lim: bool = true
 const default_pid_output_limit: float = 0.0
+const default_pid_output_lim: bool = false
 
 const attitude_lpf_cutoff_freq: float = 15.0
 const attitude_lpf_enable: bool = false
@@ -99,14 +107,21 @@ const pid_z_dt: float = pid_dt
 
 const thrust_base: float = 36000.0
 const thrust_min: float = 20000.0
-
+const rollLimit : float = 20.0
+const pitchLimit : float = 20.0
+const rpLimitOverhead : float = 1.10
+const thrustScale : float = 1000.0
 
 
 const pi: float = 3.14159265358979323846
 const one: float = 1.0
 const two: float = 2.0
 const four: float = 4.0
+const deg_to_rad : float = 0.01745329251
 
+
+const max_uint16 : int = 0xffff
+const max_uint16_f : float = 65535.0
 
 
 fun lpf2pSetCutoffFreq(sample_freq, cutoff_freq: float) returns (b0, b1, b2, a1, a2: float)
@@ -135,10 +150,10 @@ let
             input;
 tel
 
-node opt_constrain<<limit : float>>(input : float) returns (output : float)
+node opt_constrain<<limit : float; lim : bool>>(input : float) returns (output : float)
 let
     output = 
-        if limit = 0.0 then
+        if lim then
             input
         else
             constrain<< -. limit, limit>>(input);
@@ -159,17 +174,17 @@ let
 tel
 
 node pid<<kp, ki, kd, dt, samplingRate, cutoffFreq : float;
-            enableDFilter : bool;
+            enableDFilter, iLim, oLim : bool;
             iLimit, oLimit: float>>(desired, measured : float) returns (output : float)
 var prev_err, integ : float; (* PID memory *)
     err,deriv : float;
 let
     err = desired -. measured;
     prev_err = 0.0 fby err;
-    integ = opt_constrain<<iLimit>>(0.0 fby integ +. err *. dt);
+    integ = opt_constrain<<iLimit, iLim>>(0.0 fby integ +. err *. dt);
     deriv = lpf2p<<samplingRate, cutoffFreq, enableDFilter>>((err -. prev_err) /. dt);
 
-    output = opt_constrain<<oLimit>>(kp *. err +. ki *. integ +. kd *. deriv);
+    output = opt_constrain<<oLimit, oLim>>(kp *. err +. ki *. integ +. kd *. deriv);
 tel
 
 (** Position Controller *)
@@ -179,12 +194,6 @@ type vec3 = {
      y : float;
      z : float
 }
-
-type vector = vec3
-type point = vec3
-type velocity = vec3
-type acc = vec3
-type axis3f = vec3
 
 type attitude = {
      roll : float;
@@ -218,9 +227,9 @@ type baro = {
 }
 
 type sensor_data = {
-     acc : axis3f;
-     gyro : axis3f;
-     mag : axis3f;
+     acc : vec3;
+     gyro : vec3;
+     mag : vec3;
      baro : baro
 }
 
@@ -229,9 +238,9 @@ type setpoint = {
      attitude_rate : attitude;
      attitude_quat : quaternion;
      thrust : float;
-     position : point;
-     velocity : velocity;
-     acceleration : acc;
+     position : vec3;
+     velocity : vec3;
+     acceleration : vec3;
      velocity_body : bool;
      mode : mode
 }
@@ -239,9 +248,9 @@ type setpoint = {
 type state_t = {
      st_attitude : attitude;
      st_attitude_quat : quaternion;
-     st_position : point;
-     st_velocity : velocity;
-     st_acc : acc
+     st_position : vec3;
+     st_velocity : vec3;
+     st_acc : vec3
 }
 
 node controller_pid1(setpin : setpoint; st : state_t)
@@ -254,7 +263,7 @@ tel
 
 (*
 node position_controller(setpin: setpoint; st : state_t)
-returns (thrust, pitch, roll: float; vout : velocity)
+returns (thrust, pitch, roll: float; vout : vec3)
 var cosyaw, sinyaw, setp_body_x, setp_body_y, state_body_x, state_body_y: float;
 let
     cosyaw = cos(state.st_attitude.yaw *. deg_to_rad);
@@ -297,9 +306,39 @@ let
 tel
 *)
 
-(** Power distribution *)
+node velocity_controller(setpin : setpoint; st : state_t) returns (thrust, pitch, roll : float)
+var cosyaw, sinyaw, state_body_vx, state_body_vy, thrustRaw : float;
+let
+    cosyaw = cos(st.st_attitude.yaw *. deg_to_rad);
+    sinyaw = sin(st.st_attitude.yaw *. deg_to_rad);
+    state_body_vx = st.st_velocity.x *. cosyaw +. st.st_velocity.y *. sinyaw;
+    state_body_vy = -. st.st_velocity.x *. sinyaw +. st.st_velocity.y *. cosyaw;
 
-const max_uint16 : int = 0xffff
+    pitch = (* constrain<<  -. pitchLimit, pitchLimit>>(
+        pid<<pid_vx_kp, pid_vx_ki, pid_vx_kd, pid_dt,
+             position_rate, vel_filt_cutoff, vel_filt_enable,
+             default_pid_intergration_lim, true,
+             default_pid_intergration_limit, pitchLimit *. rpLimitOverhead>>
+             (setpin.velocity.x, state_body_vx)
+        (* kFFx == 0.0 ? *)
+    ); *) 0.0;
+    roll = (* constrain<< -. rollLimit, rollLimit>>(
+        pid<<pid_vy_kp, pid_vy_ki, pid_vy_kd, pid_dt,
+             position_rate, vel_filt_cutoff, vel_filt_enable,
+             default_pid_intergration_lim, true,
+             default_pid_intergration_limit, rollLimit *. rpLimitOverhead>>
+             (setpin.velocity.y, state_body_vy)
+    ); *) 0.0;
+
+    thrustRaw = (* pid<<pid_vz_kp, pid_vz_ki, pid_vz_kd, pid_dt,
+                     position_rate, velz_filt_cutoff, velz_filt_enable,
+                     default_pid_intergration_lim, true,
+                     default_pid_intergration_limit, max_uint16_f /. two /. thrustScale>>
+                (setpin.velocity.z, st.st_velocity.z); *) 0.0;
+    thrust = (* constrain<<thrust_min, max_uint16_f>>(thrustRaw *. thrustScale +. thrust_base); *) 0.0;
+tel
+
+(** Power distribution *)
 
 fun limitUint16(i : int) returns (o : int)
 let
@@ -332,8 +371,3 @@ const idY : int = 1
 const idZ : int = 2
 
 
-(*
-    pid<<pid_vx_kp, pid_vx_ki, pid_vx_kd, pid_dt, position_rate, vel_filt_cutoff, vel_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
-    pid<<pid_vy_kp, pid_vy_ki, pid_vy_kd, pid_dt, position_rate, vel_filt_cutoff, vel_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
-    pid<<pid_vz_kp, pid_vz_ki, pid_vz_kd, pid_dt, position_rate, velz_filt_cutoff, velz_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
-*)
