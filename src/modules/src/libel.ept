@@ -252,6 +252,39 @@ let
     setpout = setpin;
 tel
 
+(*
+node position_controller(setp_vin: velocity; mode: stab_mode; st : state_t)
+returns (thrust, pitch, roll: float; vout : velocity)
+let
+    vout.x =
+    if mode.x = Abs then
+        pid<<pid_x_kp, pid_x_ki, pid_x_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
+        (setp_body_x, state_body_x)
+    else if not setpin.velocity_body then
+        setp_vin.x *. cosyaw +. setp_vin.y *. sinyaw
+    else
+        setp_vin.x
+    ;
+
+    vout.y =
+    if mode.y = Abs then
+        pid<<pid_y_kp, pid_y_ki, pid_y_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
+        (setp_body_y, state_body_y)
+    else if not setpin.velocity_body then
+        setp_vin.y *. cosyaw -. setp_vin.x *. sunyaw
+    else
+        setp_vin.y
+    ;
+
+    vout.z =
+    if setpin.mode.z = Abs then
+        pid<<pid_z_kp, pid_z_ki, pid_z_kd, pid_dt, position_rate, posz_filt_cutoff, posz_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>()
+    else
+        setpin.velocity.z
+    ;
+tel
+*)
+
 (** Power distribution *)
 
 const max_uint16 : int = 0xffff
@@ -286,12 +319,9 @@ const idX : int = 0
 const idY : int = 1
 const idZ : int = 2
 
-(*
-pid<<pid_x_kp, pid_x_ki, pid_x_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
-pid<<pid_y_kp, pid_y_ki, pid_y_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
-pid<<pid_z_kp, pid_z_ki, pid_z_kd, pid_dt, position_rate, posz_filt_cutoff, posz_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
 
-pid<<pid_vx_kp, pid_vx_ki, pid_vx_kd, pid_dt, position_rate, vel_filt_cutoff, vel_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
-pid<<pid_vy_kp, pid_vy_ki, pid_vy_kd, pid_dt, position_rate, vel_filt_cutoff, vel_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
-pid<<pid_vz_kp, pid_vz_ki, pid_vz_kd, pid_dt, position_rate, velz_filt_cutoff, velz_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
+(*
+    pid<<pid_vx_kp, pid_vx_ki, pid_vx_kd, pid_dt, position_rate, vel_filt_cutoff, vel_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
+    pid<<pid_vy_kp, pid_vy_ki, pid_vy_kd, pid_dt, position_rate, vel_filt_cutoff, vel_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
+    pid<<pid_vz_kp, pid_vz_ki, pid_vz_kd, pid_dt, position_rate, velz_filt_cutoff, velz_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
 *)
