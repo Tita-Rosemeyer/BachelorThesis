@@ -253,10 +253,38 @@ type state_t = {
      st_acc : vec3
 }
 
+node everyn<<n : int>>() returns (v : bool);
+var x : int;
+let
+  x = 0 fby ((x + 1) % n);
+  v = (x = 0);
+tel
+
+node cap_angle(x : float)
+returns (y : float)
+var t : float;
+let
+  t = fmod(x, 360.0);
+  y = if t > 180.0 then t -. 360.0
+      else if t < -180.0 then t +. 360.0
+tel
+
 node controller_pid1(setpin : setpoint; st : state_t)
 returns (thrust : float; att_desired : attitude; setpout : setpoint)
+var ck_attitude, ck_position : bool;
 let
     thrust = 0.0 fby 1.1;
+
+    ck_attitude = everyn<<2>>();
+    ck_position = everyn<<10>>();
+
+      (*
+    yaw_desired =
+      if setpin.mode.myaw = Velocity
+      then capAngle(att_desired.yaw + setpin.attitude_rate.yaw *. attitude_update_dt)
+      else capAngle(setpin.attitude_rate.yaw);
+      *)
+
     att_desired = { roll = 0.0; pitch = 0.0; yaw = 0.0 };
     setpout = setpin;
 tel
