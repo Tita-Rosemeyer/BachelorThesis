@@ -306,7 +306,7 @@ let
 tel
 *)
 
-node velocity_controller(setpin : setpoint; st : state_t) returns (thrust, pitch, roll : float)
+node velocity_controller(setpin : vec3; st : state_t) returns (thrust, pitch, roll : float)
 var cosyaw, sinyaw, state_body_vx, state_body_vy, thrustRaw : float;
 let
     cosyaw = cos(st.st_attitude.yaw *. deg_to_rad);
@@ -319,7 +319,7 @@ let
              position_rate, vel_filt_cutoff, vel_filt_enable,
              default_pid_intergration_lim, true,
              default_pid_intergration_limit, pitchLimit *. rpLimitOverhead>>
-             (setpin.velocity.x, state_body_vx)
+             (setpin.x, state_body_vx)
         (* kFFx == 0.0 ? *)
     ); *) 0.0;
     roll = (* constrain<< -. rollLimit, rollLimit>>(
@@ -327,14 +327,14 @@ let
              position_rate, vel_filt_cutoff, vel_filt_enable,
              default_pid_intergration_lim, true,
              default_pid_intergration_limit, rollLimit *. rpLimitOverhead>>
-             (setpin.velocity.y, state_body_vy)
+             (setpin.y, state_body_vy)
     ); *) 0.0;
 
     thrustRaw = (* pid<<pid_vz_kp, pid_vz_ki, pid_vz_kd, pid_dt,
                      position_rate, velz_filt_cutoff, velz_filt_enable,
                      default_pid_intergration_lim, true,
                      default_pid_intergration_limit, max_uint16_f /. two /. thrustScale>>
-                (setpin.velocity.z, st.st_velocity.z); *) 0.0;
+                (setpin.z, st.st_velocity.z); *) 0.0;
     thrust = (* constrain<<thrust_min, max_uint16_f>>(thrustRaw *. thrustScale +. thrust_base); *) 0.0;
 tel
 
