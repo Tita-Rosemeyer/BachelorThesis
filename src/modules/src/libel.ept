@@ -269,26 +269,6 @@ let
       else if t <. -.180.0 then t +. 360.0 else t
 tel
 
-node controller_pid1(setpin : setpoint; st : state_t)
-returns (thrust : float; att_desired : attitude; setpout : setpoint)
-var ck_attitude, ck_position : bool;
-let
-    thrust = 0.0 fby 1.1;
-
-    ck_attitude = everyn<<2>>();
-    ck_position = everyn<<10>>();
-
-      (*
-    yaw_desired =
-      if setpin.mode.myaw = Velocity
-      then capAngle(att_desired.yaw + setpin.attitude_rate.yaw *. attitude_update_dt)
-      else capAngle(setpin.attitude_rate.yaw);
-      *)
-
-    att_desired = { roll = 0.0; pitch = 0.0; yaw = 0.0 };
-    setpout = setpin;
-tel
-
 node velocity_controller(setpin : vec3; st : state_t) returns (thrust, pitch, roll : float)
 var cosyaw, sinyaw, state_body_vx, state_body_vy, thrustRaw : float;
 let
@@ -298,7 +278,6 @@ let
     state_body_vy = -. st.st_velocity.x *. sinyaw +. st.st_velocity.y *. cosyaw;
 
     pitch =
-    (* TODO: fix float litterals in heptagon
     constrain<<  -. pitchLimit, pitchLimit>>(
         pid<<pid_vx_kp, pid_vx_ki, pid_vx_kd, pid_dt,
              position_rate, vel_filt_cutoff, vel_filt_enable,
@@ -307,10 +286,8 @@ let
              (setpin.x, state_body_vx)
         (* kFFx == 0.0 ? *)
     );
-    *) 0.0;
 
     roll =
-    (* TODO: fix float litterals in heptagon
     constrain<< -. rollLimit, rollLimit>>(
         pid<<pid_vy_kp, pid_vy_ki, pid_vy_kd, pid_dt,
              position_rate, vel_filt_cutoff, vel_filt_enable,
@@ -318,21 +295,16 @@ let
              default_pid_intergration_limit, rollLimit *. rpLimitOverhead>>
              (setpin.y, state_body_vy)
     );
-    *) 0.0;
 
     thrustRaw =
-    (* TODO: fix float litterals in heptagon
     pid<<pid_vz_kp, pid_vz_ki, pid_vz_kd, pid_dt,
                      position_rate, velz_filt_cutoff, velz_filt_enable,
                      default_pid_intergration_lim, true,
                      default_pid_intergration_limit, max_uint16_f /. two /. thrustScale>>
                 (setpin.z, st.st_velocity.z);
-    *) 0.0;
 
     thrust =
-    (* TODO: fix float litterals in heptagon
     constrain<<thrust_min, max_uint16_f>>(thrustRaw *. thrustScale +. thrust_base);
-    *) 0.0;
 tel
 
 node position_controller(setpin: setpoint; st : state_t)
@@ -351,10 +323,8 @@ let
     vout = {
         x =
             if setpin.mode.mx = Abs then
-                (* TODO: fix float litterals in heptagon
                 pid<<pid_x_kp, pid_x_ki, pid_x_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_lim, default_pid_output_lim, default_pid_intergration_limit, default_pid_output_limit>>
                 (setp_body_x, state_body_x)
-                *) 0.0
             else if not setpin.velocity_body then
                 setpin.velocity.x *. cosyaw +. setpin.velocity.y *. sinyaw
             else
@@ -363,10 +333,8 @@ let
 
         y =
             if setpin.mode.my = Abs then
-                (* TODO: fix float litterals in heptagon
                 pid<<pid_y_kp, pid_y_ki, pid_y_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_lim, default_pid_output_lim, default_pid_intergration_limit, default_pid_output_limit>>
                 (setp_body_y, state_body_y)
-                *) 0.0
             else if not setpin.velocity_body then
                 setpin.velocity.y *. cosyaw -. setpin.velocity.x *. sinyaw
             else
@@ -375,15 +343,33 @@ let
 
         z =
             if setpin.mode.mz = Abs then
-                (* TODO: fix float litterals in heptagon
                 pid<<pid_z_kp, pid_z_ki, pid_z_kd, pid_dt, position_rate, posz_filt_cutoff, posz_filt_enable, default_pid_intergration_lim, default_pid_output_lim, default_pid_intergration_limit, default_pid_output_limit>>
                 (setpin.position.z, st.st_position.z)
-                *) 0.0
             else
                 setpin.velocity.z
     };
 
     (thrust, pitch, roll) = velocity_controller(vout, st);
+tel
+
+node controller_pid1(setpin : setpoint; st : state_t)
+returns (thrust : float; att_desired : attitude; setpout : setpoint)
+var ck_attitude, ck_position : bool;
+let
+    thrust = 0.0 fby 1.1;
+
+    ck_attitude = everyn<<2>>();
+    ck_position = everyn<<10>>();
+
+      (*
+    yaw_desired =
+      if setpin.mode.myaw = Velocity
+      then capAngle(att_desired.yaw + setpin.attitude_rate.yaw *. attitude_update_dt)
+      else capAngle(setpin.attitude_rate.yaw);
+      *)
+
+    att_desired = { roll = 0.0; pitch = 0.0; yaw = 0.0 };
+    setpout = setpin;
 tel
 
 (** Power distribution *)
@@ -413,9 +399,3 @@ let
     m3 = min_idle(limitUint16(t + r - p + yaw));
     m4 = min_idle(limitUint16(t + r + p - yaw));
 tel
-
-const idX : int = 0
-const idY : int = 1
-const idZ : int = 2
-
-
