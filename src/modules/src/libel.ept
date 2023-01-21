@@ -265,8 +265,8 @@ returns (y : float)
 var t : float;
 let
   t = fmod(x, 360.0);
-  y = if t > 180.0 then t -. 360.0
-      else if t < -180.0 then t +. 360.0
+  y = if t >. 180.0 then t -. 360.0
+      else if t <. -.180.0 then t +. 360.0 else t
 tel
 
 node controller_pid1(setpin : setpoint; st : state_t)
