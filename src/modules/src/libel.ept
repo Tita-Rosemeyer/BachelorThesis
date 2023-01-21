@@ -1,3 +1,39 @@
+node constrain<<min, max : float>>(input : float) returns (output : float)
+let
+    output = 
+        if input <. min then 
+            min 
+        else if input >. max then
+            max
+        else
+            input;
+tel
+
+node opt_constrain<<limit : float>>(input : float) returns (output : float)
+let
+    output = 
+        if limit = 0.0 then
+            input
+        else
+            constrain<< -. limit, limit>>(input);
+tel
+
+(* node lpf2p<<a1,a2,b0,b1,b2 : float>>(sample : float) returns (output : float) *)
+
+node pid<<kp, ki, kd, dt, iLimit, oLimit: float>>(desired, measured : float) returns (output : float)
+var prev_err, integ : float; (* PID memory *)
+    err,deriv : float;
+let
+    err = desired -. measured;
+    prev_err = 0.0 fby err;
+    integ = opt_constrain<<iLimit>>(0.0 fby integ +. err *. dt);
+    deriv = (err -. prev_err) /. dt;
+
+    output = opt_constrain<<oLimit>>(kp *. err +. ki *. integ +. kd *. deriv);
+tel
+
+
+
 node main() returns (out : bool)
 let out = true fby false;
 tel
