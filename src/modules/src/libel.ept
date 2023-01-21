@@ -144,16 +144,30 @@ let
             constrain<< -. limit, limit>>(input);
 tel
 
-(* node lpf2p<<a1,a2,b0,b1,b2 : float>>(sample : float) returns (output : float) *)
+node lpf2p<<samplingRate, cutoffFreq : float; enableDFilter : bool>>(sample : float) returns (output : float)
+var out_filter, delay_0, delay_1, delay_2 : float;
+    b0, b1, b2, a1, a2: float;
+let
+    (b0, b1, b2, a1, a2) = lpf2pSetCutoffFreq(samplingRate, cutoffFreq);
 
-node pid<<kp, ki, kd, dt, iLimit, oLimit: float>>(desired, measured : float) returns (output : float)
+    delay_0 = sample -. delay_1 *. a1 -. delay_2 *. a2;
+    out_filter = delay_0 *. b0 +. delay_1 *. b1 +. delay_2 *. b2;
+    delay_1 = 0.0 fby delay_0;
+    delay_2 = 0.0 fby delay_1;
+
+    output = if enableDFilter then out_filter else sample;
+tel
+
+node pid<<kp, ki, kd, dt, samplingRate, cutoffFreq : float;
+            enableDFilter : bool;
+            iLimit, oLimit: float>>(desired, measured : float) returns (output : float)
 var prev_err, integ : float; (* PID memory *)
     err,deriv : float;
 let
     err = desired -. measured;
     prev_err = 0.0 fby err;
     integ = opt_constrain<<iLimit>>(0.0 fby integ +. err *. dt);
-    deriv = (err -. prev_err) /. dt;
+    deriv = lpf2p<<samplingRate, cutoffFreq, enableDFilter>>((err -. prev_err) /. dt);
 
     output = opt_constrain<<oLimit>>(kp *. err +. ki *. integ +. kd *. deriv);
 tel
