@@ -1,3 +1,5 @@
+open Mathext
+
 const pid_roll_rate_kp: float = 250.0
 const pid_roll_rate_ki: float = 500.0
 const pid_roll_rate_kd: float = 2.5
@@ -134,8 +136,32 @@ let
     output = opt_constrain<<oLimit>>(kp *. err +. ki *. integ +. kd *. deriv);
 tel
 
+(** Power distribution *)
 
+const max_uint16 : int = 0xffff
 
-node main() returns (out : bool)
-let out = true fby false;
+fun limitUint16(i : int) returns (o : int)
+let
+    o = if i > max_uint16 then max_uint16
+        else if i < 0 then 0 else i;
+tel
+
+const idle_thrust : int = 0
+
+fun min_idle(i : int) returns (o : int)
+let
+    o = if i < idle_thrust then idle_thrust else i;
+tel
+
+fun power_distribution(thrust : float; roll, pitch, yaw : int)
+returns (m1, m2, m3, m4 : int)
+var r, p, t : int;
+let
+    r = roll / 2;
+    p = pitch / 2;
+    t = round(thrust);
+    m1 = min_idle(limitUint16(t - r + p + yaw));
+    m2 = min_idle(limitUint16(t - r - p - yaw));
+    m3 = min_idle(limitUint16(t + r - p + yaw));
+    m4 = min_idle(limitUint16(t + r + p - yaw));
 tel

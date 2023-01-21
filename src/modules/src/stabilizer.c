@@ -46,7 +46,6 @@
 #include "crtp_commander_high_level.h"
 #include "crtp_localization_service.h"
 #include "controller.h"
-#include "power_distribution.h"
 #include "collision_avoidance.h"
 #include "health.h"
 #include "supervisor.h"
@@ -69,7 +68,7 @@ static setpoint_t setpoint;
 static sensorData_t sensorData;
 static state_t state;
 static control_t control;
-static motors_thrust_t motorPower;
+static Libel__power_distribution_out power_dist_out;
 // For scratch storage - never logged or passed to other subsystems.
 static setpoint_t tempSetpoint;
 
@@ -176,7 +175,6 @@ void stabilizerInit(StateEstimatorType estimator)
   sensorsInit();
   stateEstimatorInit(estimator);
   controllerInit(ControllerTypeAny);
-  powerDistributionInit();
   motorsInit(platformConfigGetMotorMapping());
   collisionAvoidanceInit();
   estimatorType = getStateEstimator();
@@ -194,7 +192,6 @@ bool stabilizerTest(void)
   pass &= sensorsTest();
   pass &= stateEstimatorTest();
   pass &= controllerTest();
-  pass &= powerDistributionTest();
   pass &= motorsTest();
   pass &= collisionAvoidanceTest();
 
@@ -286,11 +283,11 @@ static void stabilizerTask(void* param)
       if (emergencyStop || (systemIsArmed() == false)) {
         motorsStop();
       } else {
-        powerDistribution(&motorPower, &control);
-        motorsSetRatio(MOTOR_M1, motorPower.m1);
-        motorsSetRatio(MOTOR_M2, motorPower.m2);
-        motorsSetRatio(MOTOR_M3, motorPower.m3);
-        motorsSetRatio(MOTOR_M4, motorPower.m4);
+        Libel__power_distribution_step(control.thrust, control.roll, control.pitch, control.yaw, &power_dist_out);
+        motorsSetRatio(MOTOR_M1, power_dist_out.m1);
+        motorsSetRatio(MOTOR_M2, power_dist_out.m2);
+        motorsSetRatio(MOTOR_M3, power_dist_out.m3);
+        motorsSetRatio(MOTOR_M4, power_dist_out.m4);
       }
 
 #ifdef CONFIG_DECK_USD
