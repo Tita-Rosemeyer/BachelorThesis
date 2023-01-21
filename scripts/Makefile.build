@@ -308,7 +308,7 @@ targets += $(multi-used-y)
 
 quiet_cmd_heptc_c_ept = HEPTC $<
 cmd_heptc_c_ept = \
-	$(HEPTC) -target c -targetpath src/modules/src $<; \
+	$(HEPTC) -stdlib ../include/heptagon -target c -targetpath src/modules/src $<; \
 	mv src/modules/src/libel_c/* src/modules/src/
 
 $(obj)/%.c: $(src)/%.ept

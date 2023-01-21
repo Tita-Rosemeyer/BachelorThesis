@@ -39,6 +39,7 @@
 #include "platform.h"
 
 #include "stabilizer.h"
+#include "libel.h"
 
 #include "sensors.h"
 #include "commander.h"
