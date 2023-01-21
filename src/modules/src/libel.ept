@@ -199,7 +199,7 @@ type quaternion = {
      qw : float
 }
 
-type stab_mode = Disabled | Abs | Velocity
+type stab_mode = Disable | Abs | Velocity
 
 type mode = {
      mx : stab_mode;
@@ -238,7 +238,7 @@ type setpoint = {
 
 type state_t = {
      st_attitude : attitude;
-     st_attitude_quaternion : quaternion;
+     st_attitude_quat : quaternion;
      st_position : point;
      st_velocity : velocity;
      st_acc : acc
@@ -247,7 +247,7 @@ type state_t = {
 node controller_pid1(setpin : setpoint; st : state_t)
 returns (thrust : float; att_desired : attitude; setpout : setpoint)
 let
-    thrust = 0.0;
+    thrust = 0.0 fby 1.1;
     att_desired = { roll = 0.0; pitch = 0.0; yaw = 0.0 };
     setpout = setpin;
 tel

@@ -9,6 +9,8 @@
 #include "param.h"
 #include "math3d.h"
 
+#include "libel.h"
+
 #define ATTITUDE_UPDATE_DT    (float)(1.0f/ATTITUDE_RATE)
 
 static attitude_t attitudeDesired;
@@ -24,10 +26,120 @@ static float r_pitch;
 static float r_yaw;
 static float accelz;
 
+static Libel__setpoint setpin;
+static Libel__state_t st;
+static Libel__controller_pid1_mem controller1_mem;
+static Libel__controller_pid1_out controller1_out;
+
+void libel_from_vec3(const struct vec3_s *in, Libel__vec3 *out) {
+    out->x = in->x;
+    out->y = in->y;
+    out->z = in->z;
+}
+
+void libel_to_vec3(const Libel__vec3 *in, struct vec3_s *out) {
+    out->x = in->x;
+    out->y = in->y;
+    out->z = in->z;
+}
+
+void libel_from_attitude(const attitude_t *in, Libel__attitude *out) {
+    out->roll = in->roll;
+    out->pitch = in->pitch;
+    out->yaw = in->yaw;
+}
+
+void libel_to_attitude(const Libel__attitude *in, attitude_t *out) {
+    out->roll = in->roll;
+    out->pitch = in->pitch;
+    out->yaw = in->yaw;
+}
+
+void libel_from_quaternion(const quaternion_t *in, Libel__quaternion *out) {
+    out->qx = in->x;
+    out->qy = in->y;
+    out->qz = in->z;
+    out->qw = in->w;
+}
+
+void libel_to_quaternion(const Libel__quaternion *in, quaternion_t *out) {
+    out->x = in->qx;
+    out->y = in->qy;
+    out->z = in->qz;
+    out->w = in->qw;
+}
+
+Libel__stab_mode libel_from_mode(enum mode_e m) {
+    switch(m) {
+        case modeDisable:
+            return Libel__Disable;
+        case modeAbs:
+            return Libel__Abs;
+        default:
+            return Libel__Velocity;
+    }
+}
+
+enum mode_e libel_to_mode(Libel__stab_mode m) {
+    switch(m) {
+        case Libel__Disable:
+            return modeDisable;
+        case Libel__Abs:
+            return modeAbs;
+        default:
+            return modeVelocity;
+    }
+}
+
+void libel_from_setpoint(setpoint_t *in, Libel__setpoint *out) {
+    libel_from_attitude(&in->attitude, &out->attitude);
+    libel_from_attitude(&in->attitudeRate, &out->attitude_rate);
+    libel_from_quaternion(&in->attitudeQuaternion, &out->attitude_quat);
+    out->thrust = in->thrust;
+    libel_from_vec3(&in->position, &out->position);
+    libel_from_vec3(&in->velocity, &out->velocity);
+    libel_from_vec3(&in->acceleration, &out->acceleration);
+    out->velocity_body = in->velocity_body;
+    out->mode.mx = libel_from_mode(in->mode.x);
+    out->mode.my = libel_from_mode(in->mode.y);
+    out->mode.mz = libel_from_mode(in->mode.z);
+    out->mode.mroll = libel_from_mode(in->mode.roll);
+    out->mode.mpitch = libel_from_mode(in->mode.pitch);
+    out->mode.myaw = libel_from_mode(in->mode.yaw);
+    out->mode.mquat = libel_from_mode(in->mode.quat);
+}
+
+void libel_to_setpoint(Libel__setpoint *in, setpoint_t *out) {
+    libel_to_attitude(&in->attitude, &out->attitude);
+    libel_to_attitude(&in->attitude_rate, &out->attitudeRate);
+    libel_to_quaternion(&in->attitude_quat, &out->attitudeQuaternion);
+    out->thrust = in->thrust;
+    libel_to_vec3(&in->position, &out->position);
+    libel_to_vec3(&in->velocity, &out->velocity);
+    libel_to_vec3(&in->acceleration, &out->acceleration);
+    out->velocity_body = in->velocity_body;
+    out->mode.x = libel_to_mode(in->mode.mx);
+    out->mode.y = libel_to_mode(in->mode.my);
+    out->mode.z = libel_to_mode(in->mode.mz);
+    out->mode.roll = libel_to_mode(in->mode.mroll);
+    out->mode.pitch = libel_to_mode(in->mode.mpitch);
+    out->mode.yaw = libel_to_mode(in->mode.myaw);
+    out->mode.quat = libel_to_mode(in->mode.mquat);
+}
+
+void libel_from_state(const state_t *in, Libel__state_t *out) {
+    libel_from_attitude(&in->attitude, &out->st_attitude);
+    libel_from_quaternion(&in->attitudeQuaternion, &out->st_attitude_quat);
+    libel_from_vec3(&in->position, &out->st_position);
+    libel_from_vec3(&in->velocity, &out->st_velocity);
+    libel_from_vec3(&in->acc, &out->st_acc);
+}
+
 void controllerPidInit(void)
 {
   attitudeControllerInit(ATTITUDE_UPDATE_DT);
-  positionControllerInit();
+  /* positionControllerInit(); */
+  Libel__controller_pid1_reset(&controller1_mem);
 }
 
 bool controllerPidTest(void)
@@ -39,62 +151,71 @@ bool controllerPidTest(void)
   return pass;
 }
 
-static float capAngle(float angle) {
-  float result = angle;
+/* static float capAngle(float angle) { */
+/*   float result = angle; */
 
-  while (result > 180.0f) {
-    result -= 360.0f;
-  }
+/*   while (result > 180.0f) { */
+/*     result -= 360.0f; */
+/*   } */
 
-  while (result < -180.0f) {
-    result += 360.0f;
-  }
+/*   while (result < -180.0f) { */
+/*     result += 360.0f; */
+/*   } */
 
-  return result;
-}
+/*   return result; */
+/* } */
 
 void controllerPid(control_t *control, setpoint_t *setpoint,
                                          const sensorData_t *sensors,
                                          const state_t *state,
                                          const uint32_t tick)
 {
-  if (RATE_DO_EXECUTE(ATTITUDE_RATE, tick)) {
-    // Rate-controled YAW is moving YAW angle setpoint
-    if (setpoint->mode.yaw == modeVelocity) {
-      attitudeDesired.yaw = capAngle(attitudeDesired.yaw + setpoint->attitudeRate.yaw * ATTITUDE_UPDATE_DT);
-       
-      #ifdef YAW_MAX_DELTA
-      float delta = capAngle(attitudeDesired.yaw-state->attitude.yaw);
-      // keep the yaw setpoint within +/- YAW_MAX_DELTA from the current yaw
-        if (delta > YAW_MAX_DELTA)
-        {
-          attitudeDesired.yaw = state->attitude.yaw + YAW_MAX_DELTA;
-        }
-        else if (delta < -YAW_MAX_DELTA)
-        {
-          attitudeDesired.yaw = state->attitude.yaw - YAW_MAX_DELTA;
-        }
-      #endif
-    } else {
-      attitudeDesired.yaw = setpoint->attitude.yaw;
-    }
+  // Une fois tous les 2
+  /* if (RATE_DO_EXECUTE(ATTITUDE_RATE, tick)) { */
+  /*   // Rate-controled YAW is moving YAW angle setpoint */
+  /*   if (setpoint->mode.yaw == modeVelocity) { */
+  /*     attitudeDesired.yaw = capAngle(attitudeDesired.yaw + setpoint->attitudeRate.yaw * ATTITUDE_UPDATE_DT); */
 
-    attitudeDesired.yaw = capAngle(attitudeDesired.yaw);
-  }
+  /*     #ifdef YAW_MAX_DELTA */
+  /*     float delta = capAngle(attitudeDesired.yaw-state->attitude.yaw); */
+  /*     // keep the yaw setpoint within +/- YAW_MAX_DELTA from the current yaw */
+  /*       if (delta > YAW_MAX_DELTA) */
+  /*       { */
+  /*         attitudeDesired.yaw = state->attitude.yaw + YAW_MAX_DELTA; */
+  /*       } */
+  /*       else if (delta < -YAW_MAX_DELTA) */
+  /*       { */
+  /*         attitudeDesired.yaw = state->attitude.yaw - YAW_MAX_DELTA; */
+  /*       } */
+  /*     #endif */
+  /*   } else { */
+  /*     attitudeDesired.yaw = setpoint->attitude.yaw; */
+  /*   } */
 
-  if (RATE_DO_EXECUTE(POSITION_RATE, tick)) {
-    positionController(&actuatorThrust, &attitudeDesired, setpoint, state);
-  }
+  /*   attitudeDesired.yaw = capAngle(attitudeDesired.yaw); */
+  /* } */
+
+  // Une fois tous les 10
+  /* if (RATE_DO_EXECUTE(POSITION_RATE, tick)) { */
+  /*   positionController(&actuatorThrust, &attitudeDesired, setpoint, state); */
+  /* } */
+
+  libel_from_setpoint(setpoint, &setpin);
+  libel_from_state(state, &st);
+  Libel__controller_pid1_step(setpin, st, &controller1_out, &controller1_mem);
+  actuatorThrust = controller1_out.thrust;
+  libel_to_attitude(&controller1_out.att_desired, &attitudeDesired);
+  libel_to_setpoint(&controller1_out.setpout, setpoint);
 
   if (RATE_DO_EXECUTE(ATTITUDE_RATE, tick)) {
     // Switch between manual and automatic position control
-    if (setpoint->mode.z == modeDisable) {
-      actuatorThrust = setpoint->thrust;
-    }
-    if (setpoint->mode.x == modeDisable || setpoint->mode.y == modeDisable) {
-      attitudeDesired.roll = setpoint->attitude.roll;
-      attitudeDesired.pitch = setpoint->attitude.pitch;
-    }
+    /* if (setpoint->mode.z == modeDisable) { */
+    /*   actuatorThrust = setpoint->thrust; */
+    /* } */
+    /* if (setpoint->mode.x == modeDisable || setpoint->mode.y == modeDisable) { */
+    /*   attitudeDesired.roll = setpoint->attitude.roll; */
+    /*   attitudeDesired.pitch = setpoint->attitude.pitch; */
+    /* } */
 
     attitudeControllerCorrectAttitudePID(state->attitude.roll, state->attitude.pitch, state->attitude.yaw,
                                 attitudeDesired.roll, attitudeDesired.pitch, attitudeDesired.yaw,
