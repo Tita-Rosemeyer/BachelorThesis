@@ -289,51 +289,6 @@ let
     setpout = setpin;
 tel
 
-(*
-node position_controller(setpin: setpoint; st : state_t)
-returns (thrust, pitch, roll: float; vout : vec3)
-var cosyaw, sinyaw, setp_body_x, setp_body_y, state_body_x, state_body_y: float;
-let
-    cosyaw = cos(state.st_attitude.yaw *. deg_to_rad);
-    sinyaw = sin(state.st_attitude.yaw *. deg_to_rad);
-
-    setp_body_x = setpin.velocity.x *. cosyaw +. setpin.velocity.y *. sinyaw;
-    setp_body_y = setpin.velocity.x *. sinyaw +. setpin.velocity.y *. cosyaw;
-
-    state_body_x = 
-
-    vout.x =
-    if stepin.mode.x = Abs then
-        pid<<pid_x_kp, pid_x_ki, pid_x_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
-        (setp_body_x, state_body_x)
-    else if not setpin.velocity_body then
-        setpin.velocity.x *. cosyaw +. setpin.velocity.y *. sinyaw
-    else
-        setpin.velocity.x
-    ;
-
-    vout.y =
-    if setpin.mode.y = Abs then
-        pid<<pid_y_kp, pid_y_ki, pid_y_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
-        (setp_body_y, state_body_y)
-    else if not setpin.velocity_body then
-        setpin.velocity.y *. cosyaw -. setpin.velocity.x *. sinyaw
-    else
-        setpin.velocity.y
-    ;
-
-    vout.z =
-    if setpin.mode.z = Abs then
-        pid<<pid_z_kp, pid_z_ki, pid_z_kd, pid_dt, position_rate, posz_filt_cutoff, posz_filt_enable, default_pid_intergration_limit, default_pid_output_limit>>
-        (setpin.position.z, st.position.z)
-    else
-        setpin.velocity.z
-    ;
-
-    thurst, pitch, roll = velocity_controller(setpin, st);
-tel
-*)
-
 node velocity_controller(setpin : vec3; st : state_t) returns (thrust, pitch, roll : float)
 var cosyaw, sinyaw, state_body_vx, state_body_vy, thrustRaw : float;
 let
@@ -364,6 +319,57 @@ let
                      default_pid_intergration_limit, max_uint16_f /. two /. thrustScale>>
                 (setpin.z, st.st_velocity.z); *) 0.0;
     thrust = (* constrain<<thrust_min, max_uint16_f>>(thrustRaw *. thrustScale +. thrust_base); *) 0.0;
+tel
+
+node position_controller(setpin: setpoint; st : state_t)
+returns (thrust, pitch, roll: float; vout : vec3)
+var cosyaw, sinyaw, setp_body_x, setp_body_y, state_body_x, state_body_y: float;
+let
+    cosyaw = cos(st.st_attitude.yaw *. deg_to_rad);
+    sinyaw = sin(st.st_attitude.yaw *. deg_to_rad);
+
+    setp_body_x = setpin.position.x *. cosyaw +. setpin.position.y *. sinyaw;
+    setp_body_y = -. setpin.position.x *. sinyaw +. setpin.position.y *. cosyaw;
+
+    state_body_x = st.st_position.x *. cosyaw +. st.st_position.y *. sinyaw;
+    state_body_y = -. st.st_position.x *. sinyaw +. st.st_position.y *. cosyaw;
+
+    vout = {
+        x =
+            if setpin.mode.mx = Abs then
+                (*
+                pid<<pid_x_kp, pid_x_ki, pid_x_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_lim, default_pid_output_lim, default_pid_intergration_limit, default_pid_output_limit>>
+                (setp_body_x, state_body_x)
+                *) 0.0
+            else if not setpin.velocity_body then
+                setpin.velocity.x *. cosyaw +. setpin.velocity.y *. sinyaw
+            else
+                setpin.velocity.x
+            ;
+
+        y =
+            if setpin.mode.my = Abs then
+                (*
+                pid<<pid_y_kp, pid_y_ki, pid_y_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_lim, default_pid_output_lim, default_pid_intergration_limit, default_pid_output_limit>>
+                (setp_body_y, state_body_y)
+                *) 0.0
+            else if not setpin.velocity_body then
+                setpin.velocity.y *. cosyaw -. setpin.velocity.x *. sinyaw
+            else
+                setpin.velocity.y
+            ;
+
+        z =
+            if setpin.mode.mz = Abs then
+                (*
+                pid<<pid_z_kp, pid_z_ki, pid_z_kd, pid_dt, position_rate, posz_filt_cutoff, posz_filt_enable, default_pid_intergration_lim, default_pid_output_lim, default_pid_intergration_limit, default_pid_output_limit>>
+                (setpin.position.z, st.st_position.z)
+                *) 0.0
+            else
+                setpin.velocity.z
+    };
+
+    (thrust, pitch, roll) = velocity_controller(vout, st);
 tel
 
 (** Power distribution *)
