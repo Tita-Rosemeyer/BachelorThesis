@@ -54,3 +54,7 @@ void Mathext__power_step(float x, float y, Mathext__power_out *out)
   out->r = powf(x, y);
 }
 
+void Mathext__fmod_step(float x, float y, Mathext__fmod_out* _out) {
+  _out->z = fmod(x, y);
+}
+

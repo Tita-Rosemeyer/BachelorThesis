@@ -71,6 +71,10 @@ typedef struct Mathext__max_float_out {
   float z;
 } Mathext__max_float_out;
 
+typedef struct Mathext__fmod_out {
+  float z;
+} Mathext__fmod_out;
+
 void Mathext__max_float_step(float x, float y, Mathext__max_float_out* _out);
 
 typedef struct Mathext__power_out {

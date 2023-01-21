@@ -21,3 +21,6 @@ external val fun max_float(x:float;y:float) returns (z:float)
 (* compute x raised to the power y *)
 val fun power(x : float; y : float) returns (r : float)
 
+(* Return the floating-point remainder of x / y *)
+external val fun fmod(x:float; y:float) returns (z:float)
+
