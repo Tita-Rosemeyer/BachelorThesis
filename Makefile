@@ -60,7 +60,7 @@ INCLUDES += -I$(LIB)/STM32_USB_OTG_Driver/inc
 INCLUDES += -I$(LIB)/STM32F4xx_StdPeriph_Driver/inc
 INCLUDES += -I$(LIB)/vl53l1 -I$(LIB)/vl53l1/core/inc
 INCLUDES += -I$(KBUILD_OUTPUT)/include/generated
-INCLUDES += -I$(srctree)/include/heptagon/c
+INCLUDES += -I$(srctree)/src/heptagon/c
 
 # Here we tell Kbuild where to look for Kbuild files which will tell the
 # buildsystem which sources to build
