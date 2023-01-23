@@ -262,11 +262,10 @@ tel
 
 node cap_angle(x : float)
 returns (y : float)
-var t : float;
 let
-  t = fmod(x, 360.0);
-  y = if t >. 180.0 then t -. 360.0
-      else if t <. -.180.0 then t +. 360.0 else t
+  y = if x >. 180.0 then fmod(x, 360.0) -. 360.0
+      else if x <. -.180.0 then fmod(x, 360.0) +. 360.0
+      else x
 tel
 
 node velocity_controller(setpin : vec3; st : state_t) returns (thrust, pitch, roll : float)
@@ -364,7 +363,7 @@ let
       (*
     yaw_desired =
       if setpin.mode.myaw = Velocity
-      then capAngle(att_desired.yaw + setpin.attitude_rate.yaw *. attitude_update_dt)
+      then capAngle(att_desired.yaw +. setpin.attitude_rate.yaw *. attitude_update_dt)
       else capAngle(setpin.attitude_rate.yaw);
       *)
 
