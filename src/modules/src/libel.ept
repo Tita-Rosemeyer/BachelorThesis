@@ -105,7 +105,7 @@ const pid_z_ki: float = 0.5
 const pid_z_kd: float = 0.0
 const pid_z_dt: float = pid_dt
 
-const thrust_base: float = 36000.0
+const thrust_base: float = 38000.0
 const thrust_min: float = 20000.0
 const rollLimit : float = 20.0
 const pitchLimit : float = 20.0
@@ -114,11 +114,7 @@ const thrustScale : float = 1000.0
 
 
 const pi: float = 3.14159265358979323846
-const one: float = 1.0
-const two: float = 2.0
-const four: float = 4.0
 const deg_to_rad : float = 0.01745329251
-
 
 const max_uint16 : int = 0xffff
 const max_uint16_f : float = 65535.0
@@ -129,12 +125,12 @@ var fr, ohm, c: float;
 let
     fr = sample_freq /. cutoff_freq;
     ohm = tan( pi /. fr );
-    c = one +. two *. cos( pi /. four ) *. ohm +. ohm *. ohm;
+    c = 1.0 +. 2.0 *. cos( pi /. 4.0 ) *. ohm +. ohm *. ohm;
     b0 = ohm *. ohm /. c;
-    b1 = two *. b0;
+    b1 = 2.0 *. b0;
     b2 = b0;
-    a1 = two *. ( ohm *. ohm -. one ) /. c;
-    a2 = ( one -. two *. cos( pi /. four ) *. ohm +. ohm *. ohm ) /. c;
+    a1 = 2.0 *. ( ohm *. ohm -. 1.0) /. c;
+    a2 = ( 1.0 -. 2.0 *. cos( pi /. 4.0 ) *. ohm +. ohm *. ohm ) /. c;
 tel
 
 
@@ -268,7 +264,7 @@ let
       else x
 tel
 
-node velocity_controller(setpin : vec3; st : state_t) returns (thrust, pitch, roll : float)
+node velocity_controller(velocity : vec3; st : state_t) returns (thrust, pitch, roll : float)
 var cosyaw, sinyaw, state_body_vx, state_body_vy, thrustRaw : float;
 let
     cosyaw = cos(st.st_attitude.yaw *. deg_to_rad);
@@ -278,97 +274,113 @@ let
 
     pitch =
     constrain<<  -. pitchLimit, pitchLimit>>(
-        pid<<pid_vx_kp, pid_vx_ki, pid_vx_kd, pid_dt,
+        -.pid<<pid_vx_kp, pid_vx_ki, pid_vx_kd, pid_dt,
              position_rate, vel_filt_cutoff, vel_filt_enable,
              default_pid_intergration_lim, true,
              default_pid_intergration_limit, pitchLimit *. rpLimitOverhead>>
-             (setpin.x, state_body_vx)
-        (* kFFx == 0.0 ? *)
+             (velocity.x, state_body_vx)
     );
 
     roll =
     constrain<< -. rollLimit, rollLimit>>(
-        pid<<pid_vy_kp, pid_vy_ki, pid_vy_kd, pid_dt,
+        -.pid<<pid_vy_kp, pid_vy_ki, pid_vy_kd, pid_dt,
              position_rate, vel_filt_cutoff, vel_filt_enable,
              default_pid_intergration_lim, true,
              default_pid_intergration_limit, rollLimit *. rpLimitOverhead>>
-             (setpin.y, state_body_vy)
+             (velocity.y, state_body_vy)
     );
 
     thrustRaw =
     pid<<pid_vz_kp, pid_vz_ki, pid_vz_kd, pid_dt,
                      position_rate, velz_filt_cutoff, velz_filt_enable,
                      default_pid_intergration_lim, true,
-                     default_pid_intergration_limit, max_uint16_f /. two /. thrustScale>>
-                (setpin.z, st.st_velocity.z);
+                     default_pid_intergration_limit, max_uint16_f /. 2.0 /. thrustScale>>
+                (velocity.z, st.st_velocity.z);
 
     thrust =
     constrain<<thrust_min, max_uint16_f>>(thrustRaw *. thrustScale +. thrust_base);
 tel
 
-node position_controller(setpin: setpoint; st : state_t)
-returns (thrust, pitch, roll: float; vout : vec3)
+node position_controller(setpoint: setpoint; st : state_t)
+returns (thrust, pitch, roll: float)
 var cosyaw, sinyaw, setp_body_x, setp_body_y, state_body_x, state_body_y: float;
+    velocity : vec3;
 let
     cosyaw = cos(st.st_attitude.yaw *. deg_to_rad);
     sinyaw = sin(st.st_attitude.yaw *. deg_to_rad);
 
-    setp_body_x = setpin.position.x *. cosyaw +. setpin.position.y *. sinyaw;
-    setp_body_y = -. setpin.position.x *. sinyaw +. setpin.position.y *. cosyaw;
+    setp_body_x = setpoint.position.x *. cosyaw +. setpoint.position.y *. sinyaw;
+    setp_body_y = -. setpoint.position.x *. sinyaw +. setpoint.position.y *. cosyaw;
 
     state_body_x = st.st_position.x *. cosyaw +. st.st_position.y *. sinyaw;
     state_body_y = -. st.st_position.x *. sinyaw +. st.st_position.y *. cosyaw;
 
-    vout = {
+    velocity = {
         x =
-            if setpin.mode.mx = Abs then
+            if setpoint.mode.mx = Abs then
                 pid<<pid_x_kp, pid_x_ki, pid_x_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_lim, default_pid_output_lim, default_pid_intergration_limit, default_pid_output_limit>>
                 (setp_body_x, state_body_x)
-            else if not setpin.velocity_body then
-                setpin.velocity.x *. cosyaw +. setpin.velocity.y *. sinyaw
+            else if not setpoint.velocity_body then
+                setpoint.velocity.x *. cosyaw +. setpoint.velocity.y *. sinyaw
             else
-                setpin.velocity.x
+                setpoint.velocity.x
             ;
 
         y =
-            if setpin.mode.my = Abs then
+            if setpoint.mode.my = Abs then
                 pid<<pid_y_kp, pid_y_ki, pid_y_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_lim, default_pid_output_lim, default_pid_intergration_limit, default_pid_output_limit>>
                 (setp_body_y, state_body_y)
-            else if not setpin.velocity_body then
-                setpin.velocity.y *. cosyaw -. setpin.velocity.x *. sinyaw
+            else if not setpoint.velocity_body then
+                setpoint.velocity.y *. cosyaw -. setpoint.velocity.x *. sinyaw
             else
-                setpin.velocity.y
+                setpoint.velocity.y
             ;
 
         z =
-            if setpin.mode.mz = Abs then
+            if setpoint.mode.mz = Abs then
                 pid<<pid_z_kp, pid_z_ki, pid_z_kd, pid_dt, position_rate, posz_filt_cutoff, posz_filt_enable, default_pid_intergration_lim, default_pid_output_lim, default_pid_intergration_limit, default_pid_output_limit>>
-                (setpin.position.z, st.st_position.z)
+                (setpoint.position.z, st.st_position.z)
             else
-                setpin.velocity.z
+                setpoint.velocity.z
     };
 
-    (thrust, pitch, roll) = velocity_controller(vout, st);
+    (thrust, pitch, roll) = velocity_controller(velocity, st);
 tel
 
-node controller_pid1(setpin : setpoint; st : state_t)
-returns (thrust : float; att_desired : attitude; setpout : setpoint)
-var ck_attitude, ck_position : bool;
+node controller_pid1(setpoint : setpoint; st : state_t)
+returns (last thrust : float = 0.0;
+         last att_desired : attitude = { pitch = 0.0; roll = 0.0; yaw = 0.0 });
+var ck_attitude, ck_position : bool; thrustd, pitch, roll, yaw : float;
 let
-    thrust = 0.0 fby 1.1;
-
     ck_attitude = everyn<<2>>();
     ck_position = everyn<<10>>();
 
-      (*
-    yaw_desired =
-      if setpin.mode.myaw = Velocity
-      then capAngle(att_desired.yaw +. setpin.attitude_rate.yaw *. attitude_update_dt)
-      else capAngle(setpin.attitude_rate.yaw);
-      *)
+    switch ck_attitude
+    | true do yaw =
+        if setpoint.mode.myaw = Velocity
+        then cap_angle((last att_desired).yaw +. setpoint.attitude_rate.yaw *. attitude_update_dt)
+        else cap_angle(setpoint.attitude_rate.yaw)
+    | false do yaw = (last att_desired).yaw;
+    end;
 
-    att_desired = { roll = 0.0; pitch = 0.0; yaw = 0.0 };
-    setpout = setpin;
+    switch ck_position
+    | true do
+        (thrustd, pitch, roll) = position_controller(setpoint, st);
+    | false do
+        thrustd = last thrust;
+        pitch = (last att_desired).pitch;
+        roll = (last att_desired).roll;
+    end;
+
+    switch ck_attitude
+    | true do
+        thrust = if setpoint.mode.mz = Disable then setpoint.thrust else thrustd;
+        switch (setpoint.mode.mx = Disable or setpoint.mode.my = Disable)
+        | true do att_desired = { setpoint.attitude with .yaw = yaw }
+        | false do att_desired = { pitch = pitch; roll = roll; yaw = yaw }
+        end
+    | false do
+    end;
 tel
 
 (** Power distribution *)
