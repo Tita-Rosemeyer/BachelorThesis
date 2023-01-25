@@ -269,7 +269,8 @@ void controllerPid(control_t *control, setpoint_t *setpoint,
     cmd_yaw = control->yaw;
 
     attitudeControllerResetAllPID();
-    positionControllerResetAllPID();
+    Libel__controller_pid1_reset(&controller1_mem);
+    /* positionControllerResetAllPID(); */
 
     // Reset the calculated YAW angle for rate control
     attitudeDesired.yaw = state->attitude.yaw;

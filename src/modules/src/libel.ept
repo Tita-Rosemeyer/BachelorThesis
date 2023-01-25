@@ -364,7 +364,7 @@ let
                 pid<<pid_z_kp, pid_z_ki, pid_z_kd, pid_dt,
                     position_rate, posz_filt_cutoff, posz_filt_enable,
                     default_pid_integration_lim, default_pid_output_lim,
-                    default_pid_integration_limit, 0.5 *. velMaxOverhead>>
+                    default_pid_integration_limit, zVelMax *. velMaxOverhead>>
                 (setpoint.position.z, st.st_position.z)
             else
                 setpoint.velocity.z
