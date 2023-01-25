@@ -3,43 +3,38 @@ open Mathext
 const pid_roll_rate_kp: float = 250.0
 const pid_roll_rate_ki: float = 500.0
 const pid_roll_rate_kd: float = 2.5
-const pid_roll_rate_intergration_limit: float = 33.3
-const pid_roll_rate_intergration_lim: bool = true
+const pid_roll_rate_integration_limit: float = 33.3
+const pid_roll_rate_integration_lim: bool = true
 
 const pid_pitch_rate_kp: float = 250.0
 const pid_pitch_rate_ki: float = 500.0
 const pid_pitch_rate_kd: float = 2.5
-const pid_pitch_rate_intergration_limit: float = 33.3
-const pid_pitch_rate_intergration_lim: bool = true
+const pid_pitch_rate_integration_limit: float = 33.3
+const pid_pitch_rate_integration_lim: bool = true
 
 const pid_yaw_rate_kp: float = 120.0
 const pid_yaw_rate_ki: float = 16.7
 const pid_yaw_rate_kd: float = 0.0
-const pid_yaw_rate_intergration_limit: float = 166.7
-const pid_yaw_rate_intergration_lim: bool = true
+const pid_yaw_rate_integration_limit: float = 166.7
+const pid_yaw_rate_integration_lim: bool = true
 
 const pid_roll_kp: float = 6.0
 const pid_roll_ki: float = 3.0
 const pid_roll_kd: float = 0.0
-const pid_roll_intergration_limit: float = 20.0
-const pid_roll_intergration_lim: bool = true
+const pid_roll_integration_limit: float = 20.0
+const pid_roll_integration_lim: bool = true
 
 const pid_pitch_kp: float = 6.0
 const pid_pitch_ki: float = 3.0
 const pid_pitch_kd: float = 0.0
-const pid_pitch_intergration_limit: float = 20.0
-const pid_pitch_intergration_lim: bool = true
+const pid_pitch_integration_limit: float = 20.0
+const pid_pitch_integration_lim: bool = true
 
 const pid_yaw_kp: float = 6.0
 const pid_yaw_ki: float = 1.0
 const pid_yaw_kd: float = 0.35
-const pid_yaw_intergration_limit: float = 360.0
-const pid_yaw_intergration_lim: bool = true
-
-const default_pid_intergration_limit: float = 5000.0
-const default_pid_intergration_lim: bool = true
-const default_pid_output_limit: float = 0.0
-const default_pid_output_lim: bool = false
+const pid_yaw_integration_limit: float = 360.0
+const pid_yaw_integration_lim: bool = true
 
 const attitude_lpf_cutoff_freq: float = 15.0
 const attitude_lpf_enable: bool = false
@@ -58,7 +53,7 @@ const attitude_rate: float = rate_500_hz
 const position_rate: float = rate_100_hz
 const rate_hl_commander: float = rate_100_hz
 
-const attitude_update_rate: float = rate_250_hz
+const attitude_update_rate: float = rate_500_hz
 const attitude_update_dt: float = 1.0 /. attitude_update_rate
 
 const pos_update_rate: float = rate_100_hz
@@ -75,46 +70,67 @@ const velz_filt_cutoff: float = 20.0
 
 const pid_dt: float = 1.0 /. position_rate
 
+(* Libel__pid_params_25_0000001_0000000_0000000_010000100_00000020_000000truetruetrue5000_00000022_000000__step *)
 const pid_vx_kp: float = 25.0
 const pid_vx_ki: float = 1.0
 const pid_vx_kd: float = 0.0
 const pid_vx_dt: float = pid_dt
 
+(* Libel__pid_params_25_0000001_0000000_0000000_010000100_00000020_000000truetruetrue5000_00000022_000000__step *)
 const pid_vy_kp: float = 25.0
 const pid_vy_ki: float = 1.0
 const pid_vy_kd: float = 0.0
 const pid_vy_dt: float = pid_dt
 
+(* Libel__pid_params_25_00000015_0000000_0000000_010000100_00000020_000000truetruetrue5000_00000032_767500__step *)
 const pid_vz_kp: float = 25.0
 const pid_vz_ki: float = 15.0
 const pid_vz_kd: float = 0.0
 const pid_vz_dt: float = pid_dt
 
+(* Libel__pid_params_2_0000000_0000000_0000000_010000100_00000020_000000truetruefalse5000_0000000_000000__step *)
 const pid_x_kp: float = 2.0
 const pid_x_ki: float = 0.0
 const pid_x_kd: float = 0.0
 const pid_x_dt: float = pid_dt
 
+(* Libel__pid_params_2_0000000_0000000_0000000_010000100_00000020_000000truetruefalse5000_0000000_000000__step *)
 const pid_y_kp: float = 2.0
 const pid_y_ki: float = 0.0
 const pid_y_kd: float = 0.0
 const pid_y_dt: float = pid_dt
 
+(* Libel__pid_params_2_0000000_5000000_0000000_010000100_00000020_000000truetruefalse5000_0000000_000000__step *)
 const pid_z_kp: float = 2.0
 const pid_z_ki: float = 0.5
 const pid_z_kd: float = 0.0
 const pid_z_dt: float = pid_dt
 
-const thrust_base: float = 38000.0
+
+(* Libel__constrain_params__5000_0000005000_000000__step *)
+const default_pid_integration_limit: float = 5000.0
+const default_pid_integration_lim: bool = true
+(* Libel__constrain_params__0_0000000_000000__step *)
+const default_pid_output_limit: float = 0.0
+const default_pid_output_lim: bool = false
+
+
+const thrust_base: float = 36000.0
+(* Libel__constrain_params_20000_00000065535_000000__step *)
 const thrust_min: float = 20000.0
+(* Libel__constrain_params__20_00000020_000000__step *)
 const rollLimit : float = 20.0
 const pitchLimit : float = 20.0
 const rpLimitOverhead : float = 1.10
+
+const xVelMax : float = 1.0
+const yVelMax : float = 1.0
+const zVelMax : float = 1.0
+const velMaxOverhead : float = 1.10
+
 const thrustScale : float = 1000.0
 
-
 const pi: float = 3.14159265358979323846
-const deg_to_rad : float = 0.01745329251
 
 const max_uint16 : int = 0xffff
 const max_uint16_f : float = 65535.0
@@ -267,8 +283,9 @@ tel
 node velocity_controller(velocity : vec3; st : state_t) returns (thrust, pitch, roll : float)
 var cosyaw, sinyaw, state_body_vx, state_body_vy, thrustRaw : float;
 let
-    cosyaw = cos(st.st_attitude.yaw *. deg_to_rad);
-    sinyaw = sin(st.st_attitude.yaw *. deg_to_rad);
+    cosyaw = cos(st.st_attitude.yaw *. pi /. 180.0);
+    sinyaw = sin(st.st_attitude.yaw *. pi /. 180.0);
+
     state_body_vx = st.st_velocity.x *. cosyaw +. st.st_velocity.y *. sinyaw;
     state_body_vy = -. st.st_velocity.x *. sinyaw +. st.st_velocity.y *. cosyaw;
 
@@ -276,8 +293,8 @@ let
     constrain<<  -. pitchLimit, pitchLimit>>(
         -.pid<<pid_vx_kp, pid_vx_ki, pid_vx_kd, pid_dt,
              position_rate, vel_filt_cutoff, vel_filt_enable,
-             default_pid_intergration_lim, true,
-             default_pid_intergration_limit, pitchLimit *. rpLimitOverhead>>
+             default_pid_integration_lim, true,
+             default_pid_integration_limit, pitchLimit *. rpLimitOverhead>>
              (velocity.x, state_body_vx)
     );
 
@@ -285,16 +302,16 @@ let
     constrain<< -. rollLimit, rollLimit>>(
         -.pid<<pid_vy_kp, pid_vy_ki, pid_vy_kd, pid_dt,
              position_rate, vel_filt_cutoff, vel_filt_enable,
-             default_pid_intergration_lim, true,
-             default_pid_intergration_limit, rollLimit *. rpLimitOverhead>>
+             default_pid_integration_lim, true,
+             default_pid_integration_limit, rollLimit *. rpLimitOverhead>>
              (velocity.y, state_body_vy)
     );
 
     thrustRaw =
     pid<<pid_vz_kp, pid_vz_ki, pid_vz_kd, pid_dt,
                      position_rate, velz_filt_cutoff, velz_filt_enable,
-                     default_pid_intergration_lim, true,
-                     default_pid_intergration_limit, max_uint16_f /. 2.0 /. thrustScale>>
+                     default_pid_integration_lim, true,
+                     default_pid_integration_limit, max_uint16_f /. 2.0 /. thrustScale>>
                 (velocity.z, st.st_velocity.z);
 
     thrust =
@@ -306,8 +323,8 @@ returns (thrust, pitch, roll: float)
 var cosyaw, sinyaw, setp_body_x, setp_body_y, state_body_x, state_body_y: float;
     velocity : vec3;
 let
-    cosyaw = cos(st.st_attitude.yaw *. deg_to_rad);
-    sinyaw = sin(st.st_attitude.yaw *. deg_to_rad);
+    cosyaw = cos(st.st_attitude.yaw *. pi /. 180.0);
+    sinyaw = sin(st.st_attitude.yaw *. pi /. 180.0);
 
     setp_body_x = setpoint.position.x *. cosyaw +. setpoint.position.y *. sinyaw;
     setp_body_y = -. setpoint.position.x *. sinyaw +. setpoint.position.y *. cosyaw;
@@ -318,7 +335,10 @@ let
     velocity = {
         x =
             if setpoint.mode.mx = Abs then
-                pid<<pid_x_kp, pid_x_ki, pid_x_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_lim, default_pid_output_lim, default_pid_intergration_limit, default_pid_output_limit>>
+                pid<<pid_x_kp, pid_x_ki, pid_x_kd, pid_dt,
+                    position_rate, pos_filt_cutoff, pos_filt_enable,
+                    default_pid_integration_lim, default_pid_output_lim,
+                    default_pid_integration_limit, xVelMax *. velMaxOverhead>>
                 (setp_body_x, state_body_x)
             else if not setpoint.velocity_body then
                 setpoint.velocity.x *. cosyaw +. setpoint.velocity.y *. sinyaw
@@ -328,7 +348,10 @@ let
 
         y =
             if setpoint.mode.my = Abs then
-                pid<<pid_y_kp, pid_y_ki, pid_y_kd, pid_dt, position_rate, pos_filt_cutoff, pos_filt_enable, default_pid_intergration_lim, default_pid_output_lim, default_pid_intergration_limit, default_pid_output_limit>>
+                pid<<pid_y_kp, pid_y_ki, pid_y_kd, pid_dt,
+                    position_rate, pos_filt_cutoff, pos_filt_enable,
+                    default_pid_integration_lim, default_pid_output_lim,
+                    default_pid_integration_limit, yVelMax *. velMaxOverhead>>
                 (setp_body_y, state_body_y)
             else if not setpoint.velocity_body then
                 setpoint.velocity.y *. cosyaw -. setpoint.velocity.x *. sinyaw
@@ -338,7 +361,10 @@ let
 
         z =
             if setpoint.mode.mz = Abs then
-                pid<<pid_z_kp, pid_z_ki, pid_z_kd, pid_dt, position_rate, posz_filt_cutoff, posz_filt_enable, default_pid_intergration_lim, default_pid_output_lim, default_pid_intergration_limit, default_pid_output_limit>>
+                pid<<pid_z_kp, pid_z_ki, pid_z_kd, pid_dt,
+                    position_rate, posz_filt_cutoff, posz_filt_enable,
+                    default_pid_integration_lim, default_pid_output_lim,
+                    default_pid_integration_limit, 0.5 *. velMaxOverhead>>
                 (setpoint.position.z, st.st_position.z)
             else
                 setpoint.velocity.z
@@ -359,7 +385,7 @@ let
     | true do yaw =
         if setpoint.mode.myaw = Velocity
         then cap_angle((last att_desired).yaw +. setpoint.attitude_rate.yaw *. attitude_update_dt)
-        else cap_angle(setpoint.attitude_rate.yaw)
+        else cap_angle(setpoint.attitude.yaw)
     | false do yaw = (last att_desired).yaw;
     end;
 

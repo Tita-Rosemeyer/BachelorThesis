@@ -311,7 +311,7 @@ cmd_heptc_c_ept = \
 	$(HEPTC) -O -stdlib ../src/heptagon -target c -targetpath src/modules/src ../src/heptagon/mathext.epi $<; \
 	mv src/modules/src/libel_c/* src/modules/src/
 
-$(obj)/%.c: $(src)/%.ept
+$(obj)/%.h $(obj)/%.c: $(src)/%.ept
 	$(call if_changed,heptc_c_ept)
 
 # Descending
