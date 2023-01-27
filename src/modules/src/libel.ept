@@ -205,7 +205,7 @@ let
                       iLimit, oLimit>>(desired -. measured);
 tel
 
-(** Position Controller *)
+(** Data structures *)
 
 type vec3 = {
      x : float;
@@ -270,6 +270,15 @@ type state_t = {
      st_velocity : vec3;
      st_acc : vec3
 }
+
+type control = {
+    c_roll    : int;
+    c_pitch   : int;
+    c_yaw     : int;
+    c_thrust  : float
+}
+
+(* Position Controller *)
 
 node everyn<<n : int>>() returns (v : bool);
 var x : int;
@@ -373,42 +382,6 @@ let
     (thrust, pitch, roll) = velocity_controller(velocity, st);
 tel
 
-node controller_pid1(setpoint : setpoint; st : state_t)
-returns (last thrust : float = 0.0;
-         last att_desired : attitude = { pitch = 0.0; roll = 0.0; yaw = 0.0 });
-var ck_attitude, ck_position : bool; thrustd, pitch, roll, yaw : float;
-let
-    ck_attitude = everyn<<2>>();
-    ck_position = everyn<<10>>();
-
-    switch ck_attitude
-    | true do yaw =
-        if setpoint.mode.myaw = Velocity
-        then cap_angle((last att_desired).yaw +. setpoint.attitude_rate.yaw *. attitude_update_dt)
-        else cap_angle(setpoint.attitude.yaw)
-    | false do yaw = (last att_desired).yaw;
-    end;
-
-    switch ck_position
-    | true do
-        (thrustd, pitch, roll) = position_controller(setpoint, st);
-    | false do
-        thrustd = last thrust;
-        pitch = (last att_desired).pitch;
-        roll = (last att_desired).roll;
-    end;
-
-    switch ck_attitude
-    | true do
-        thrust = if setpoint.mode.mz = Disable then setpoint.thrust else thrustd;
-        switch (setpoint.mode.mx = Disable or setpoint.mode.my = Disable)
-        | true do att_desired = { setpoint.attitude with .yaw = yaw }
-        | false do att_desired = { pitch = pitch; roll = roll; yaw = yaw }
-        end
-    | false do
-    end;
-tel
-
 (** Attitude Controller *)
 
 node attitudeControllerCorrectAttitudePID
@@ -423,13 +396,7 @@ let
     resetPitch = setpoint.mode.mpitch = Velocity;
 
     yaw_err = eulerYawDesired -. eulerYawActual;
-    real_yaw_err = 
-        if yaw_err >. 180.0 then
-            yaw_err -. 360.0
-        else if yaw_err <. -. 180.0 then
-            yaw_err +. 360.0
-        else
-            yaw_err;
+    real_yaw_err = cap_angle(yaw_err);
 
     reset
         rollRateDesired_pid = 
@@ -524,6 +491,62 @@ let
             rollRateDesired, pitchRateDesired, yawRateDesired
         );
 tel
+
+(* main cascaded pid controller that calls sub-controllers *)
+node controller_pid (sensors: sensor_data; st: state_t; setpoint: setpoint)
+returns (control: control);
+var freq_attitude, freq_position: bool;
+    last cap_yaw: float = 0.0;
+    last roll_pos_d: float = 0.0; last pitch_pos_d: float = 0.0; last thrust_pos_d: float = 0.0;
+    last attitude_desired: attitude = {roll=0.0; pitch=0.0; yaw=0.0}; last actuator_thrust: float = 0.0;
+    last roll_d: int = 0; last yaw_d: int = 0; last pitch_d: int = 0;
+    last control_d: control = {c_roll=0; c_pitch = 0; c_yaw = 0; c_thrust = 0.0};
+let
+    freq_attitude = everyn<<2>>();
+    freq_position = everyn<<10>>();
+
+    switch freq_attitude
+    | true do cap_yaw =
+        if setpoint.mode.myaw = Velocity
+        then cap_angle((last attitude_desired).yaw +. setpoint.attitude_rate.yaw *. attitude_update_dt)
+        else cap_angle(setpoint.attitude.yaw)
+    | false do cap_yaw = (last attitude_desired).yaw;
+    end;
+
+    switch freq_position
+    | true do
+        reset
+            (thrust_pos_d, pitch_pos_d, roll_pos_d) = position_controller(setpoint, st);
+        every (false fby (control.c_thrust = 0.0));
+    | false do
+        thrust_pos_d = last actuator_thrust;
+        pitch_pos_d = (last attitude_desired).pitch;
+        roll_pos_d = (last attitude_desired).roll;
+    end;
+
+    switch freq_attitude
+    | true do
+        actuator_thrust = if (setpoint.mode.mz = Disable) then setpoint.thrust 
+                          else thrust_pos_d;
+        switch (setpoint.mode.mx = Disable or setpoint.mode.my = Disable)
+        | true do attitude_desired = { setpoint.attitude with .yaw = cap_yaw }
+        | false do attitude_desired = { pitch = pitch_pos_d; roll = roll_pos_d; yaw = cap_yaw }
+        end;
+
+        reset
+            (roll_d, pitch_d, yaw_d) = attitudeController( attitude_desired, st, sensors, setpoint);
+        every (false fby (control.c_thrust = 0.0));
+        control_d = {c_roll = roll_d; c_pitch = pitch_d; c_yaw = yaw_d; c_thrust = actuator_thrust}
+    | false do
+        actuator_thrust = thrust_pos_d;
+    end;
+
+    switch (control_d.c_thrust = 0.0)
+    | true do control = {c_roll = 0; c_pitch = 0; c_yaw = 0; c_thrust = 0.0}
+    | false do control = control_d
+    end;
+tel
+
 
 (** Power distribution *)
 

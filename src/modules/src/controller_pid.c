@@ -15,26 +15,11 @@
 
 #define ATTITUDE_UPDATE_DT    (float)(1.0f/ATTITUDE_RATE)
 
-static attitude_t attitudeDesired;
-// static attitude_t rateDesired;
-/* static float actuatorThrust; */
-
-static float cmd_thrust;
-static float cmd_roll;
-static float cmd_pitch;
-static float cmd_yaw;
-static float r_roll;
-static float r_pitch;
-static float r_yaw;
-static float accelz;
-
 static Libel__setpoint setpin;
 static Libel__state_t st;
 static Libel__sensor_data sens;
-static Libel__controller_pid1_mem controller1_mem;
-static Libel__controller_pid1_out controller1_out;
-static Libel__attitudeController_mem att_contr_mem;
-static Libel__attitudeController_out att_contr_out;
+static Libel__controller_pid_mem controller_mem;
+static Libel__controller_pid_out controller_out;
 
 void libel_from_vec3(const struct vec3_s *in, Libel__vec3 *out) {
     out->x = in->x;
@@ -159,12 +144,16 @@ void libel_from_sensors(const sensorData_t *in, Libel__sensor_data *out) {
     libel_from_baro(&in->baro, &out->baro);
 }
 
+void libel_to_control(const Libel__control *in, control_t *out) {
+    out->roll = in->c_roll;
+    out->pitch = in->c_pitch;
+    out->yaw = in->c_yaw;
+    out->thrust = in->c_thrust;
+}
+
 void controllerPidInit(void)
 {
-  /* attitudeControllerInit(ATTITUDE_UPDATE_DT); */
-  /* positionControllerInit(); */
-  Libel__controller_pid1_reset(&controller1_mem);
-  Libel__attitudeController_reset(&att_contr_mem);
+  Libel__controller_pid_reset(&controller_mem);
 }
 
 bool controllerPidTest(void)
@@ -176,135 +165,16 @@ bool controllerPidTest(void)
   return pass;
 }
 
-/* static float capAngle(float angle) { */
-/*   float result = angle; */
-
-/*   while (result > 180.0f) { */
-/*     result -= 360.0f; */
-/*   } */
-
-/*   while (result < -180.0f) { */
-/*     result += 360.0f; */
-/*   } */
-
-/*   return result; */
-/* } */
-
 void controllerPid(control_t *control, setpoint_t *setpoint,
-                                         const sensorData_t *sensors,
-                                         const state_t *state,
-                                         const uint32_t tick)
+                   const sensorData_t *sensors,
+                   const state_t *state,
+                   const uint32_t tick)
 {
-  /* // Une fois tous les 2 */
-  /* if (RATE_DO_EXECUTE(ATTITUDE_RATE, tick)) { */
-  /*   // Rate-controled YAW is moving YAW angle setpoint */
-  /*   if (setpoint->mode.yaw == modeVelocity) { */
-  /*     attitudeDesired.yaw = capAngle(attitudeDesired.yaw + setpoint->attitudeRate.yaw * ATTITUDE_UPDATE_DT); */
-
-  /*     #ifdef YAW_MAX_DELTA */
-  /*     float delta = capAngle(attitudeDesired.yaw-state->attitude.yaw); */
-  /*     // keep the yaw setpoint within +/- YAW_MAX_DELTA from the current yaw */
-  /*       if (delta > YAW_MAX_DELTA) */
-  /*       { */
-  /*         attitudeDesired.yaw = state->attitude.yaw + YAW_MAX_DELTA; */
-  /*       } */
-  /*       else if (delta < -YAW_MAX_DELTA) */
-  /*       { */
-  /*         attitudeDesired.yaw = state->attitude.yaw - YAW_MAX_DELTA; */
-  /*       } */
-  /*     #endif */
-  /*   } else { */
-  /*     attitudeDesired.yaw = setpoint->attitude.yaw; */
-  /*   } */
-
-  /*   attitudeDesired.yaw = capAngle(attitudeDesired.yaw); */
-  /* } */
-
-  /* // Une fois tous les 10 */
-  /* if (RATE_DO_EXECUTE(POSITION_RATE, tick)) { */
-  /*   positionController(&actuatorThrust, &attitudeDesired, setpoint, state); */
-  /* } */
-
-  libel_from_setpoint(setpoint, &setpin);
-  libel_from_state(state, &st);
-  Libel__controller_pid1_step(setpin, st, &controller1_out, &controller1_mem);
-  control->thrust = controller1_out.thrust;
-  libel_to_attitude(&controller1_out.att_desired, &attitudeDesired);
-
-  if (RATE_DO_EXECUTE(ATTITUDE_RATE, tick)) {
-      libel_from_sensors(sensors, &sens);
-      Libel__attitudeController_step(controller1_out.att_desired, st, sens, setpin, &att_contr_out, &att_contr_mem);
-      control->roll = att_contr_out.roll;
-      control->pitch = att_contr_out.pitch;
-      control->yaw = att_contr_out.yaw;
-
-    /* // Switch between manual and automatic position control */
-    /* if (setpoint->mode.z == modeDisable) { */
-    /*   actuatorThrust = setpoint->thrust; */
-    /* } */
-    /* if (setpoint->mode.x == modeDisable || setpoint->mode.y == modeDisable) { */
-    /*   attitudeDesired.roll = setpoint->attitude.roll; */
-    /*   attitudeDesired.pitch = setpoint->attitude.pitch; */
-    /* } */
-
-  /*   attitudeControllerCorrectAttitudePID(state->attitude.roll, state->attitude.pitch, state->attitude.yaw, */
-  /*                               attitudeDesired.roll, attitudeDesired.pitch, attitudeDesired.yaw, */
-  /*                               &rateDesired.roll, &rateDesired.pitch, &rateDesired.yaw); */
-
-  /*   // For roll and pitch, if velocity mode, overwrite rateDesired with the setpoint */
-  /*   // value. Also reset the PID to avoid error buildup, which can lead to unstable */
-  /*   // behavior if level mode is engaged later */
-  /*   if (setpoint->mode.roll == modeVelocity) { */
-  /*     rateDesired.roll = setpoint->attitudeRate.roll; */
-  /*     attitudeControllerResetRollAttitudePID(); */
-  /*   } */
-  /*   if (setpoint->mode.pitch == modeVelocity) { */
-  /*     rateDesired.pitch = setpoint->attitudeRate.pitch; */
-  /*     attitudeControllerResetPitchAttitudePID(); */
-  /*   } */
-
-  /*   // TODO: Investigate possibility to subtract gyro drift. */
-  /*   attitudeControllerCorrectRatePID(sensors->gyro.x, -sensors->gyro.y, sensors->gyro.z, */
-  /*                            rateDesired.roll, rateDesired.pitch, rateDesired.yaw); */
-
-  /*   attitudeControllerGetActuatorOutput(&control->roll, */
-  /*                                       &control->pitch, */
-  /*                                       &control->yaw); */
-
-  /*   control->yaw = -control->yaw; */
-
-    cmd_thrust = control->thrust;
-    cmd_roll = control->roll;
-    cmd_pitch = control->pitch;
-    cmd_yaw = control->yaw;
-    r_roll = radians(sensors->gyro.x);
-    r_pitch = -radians(sensors->gyro.y);
-    r_yaw = radians(sensors->gyro.z);
-    accelz = sensors->acc.z;
-  }
-
-  /* control->thrust = actuatorThrust; */
-
-  if (control->thrust == 0)
-  {
-    control->thrust = 0;
-    control->roll = 0;
-    control->pitch = 0;
-    control->yaw = 0;
-
-    cmd_thrust = control->thrust;
-    cmd_roll = control->roll;
-    cmd_pitch = control->pitch;
-    cmd_yaw = control->yaw;
-
-    /* attitudeControllerResetAllPID(); */
-    Libel__controller_pid1_reset(&controller1_mem);
-    Libel__attitudeController_reset(&att_contr_mem);
-    /* positionControllerResetAllPID(); */
-
-    // Reset the calculated YAW angle for rate control
-    attitudeDesired.yaw = state->attitude.yaw;
-  }
+    libel_from_setpoint(setpoint, &setpin);
+    libel_from_sensors(sensors, &sens);
+    libel_from_state(state, &st);
+    Libel__controller_pid_step(sens, st, setpin, &controller_out, &controller_mem);
+    libel_to_control(&controller_out.control, control);
 }
 
 /* /\** */
