@@ -16,8 +16,8 @@
 #define ATTITUDE_UPDATE_DT    (float)(1.0f/ATTITUDE_RATE)
 
 static attitude_t attitudeDesired;
-static attitude_t rateDesired;
-static float actuatorThrust;
+// static attitude_t rateDesired;
+/* static float actuatorThrust; */
 
 static float cmd_thrust;
 static float cmd_roll;
@@ -30,8 +30,11 @@ static float accelz;
 
 static Libel__setpoint setpin;
 static Libel__state_t st;
+static Libel__sensor_data sens;
 static Libel__controller_pid1_mem controller1_mem;
 static Libel__controller_pid1_out controller1_out;
+static Libel__attitudeController_mem att_contr_mem;
+static Libel__attitudeController_out att_contr_out;
 
 void libel_from_vec3(const struct vec3_s *in, Libel__vec3 *out) {
     out->x = in->x;
@@ -137,18 +140,38 @@ void libel_from_state(const state_t *in, Libel__state_t *out) {
     libel_from_vec3(&in->acc, &out->st_acc);
 }
 
+void libel_from_baro(const baro_t *in, Libel__baro *out) {
+    out->pressure = in->pressure;
+    out->temperature = in->temperature;
+    out->asl = in->asl;
+}
+
+void libel_from_axis3f(const Axis3f *in, Libel__vec3 *out) {
+    out->x = in->x;
+    out->y = in->y;
+    out->z = in->z;
+}
+
+void libel_from_sensors(const sensorData_t *in, Libel__sensor_data *out) {
+    libel_from_axis3f(&in->acc, &out->acc);
+    libel_from_axis3f(&in->gyro, &out->gyro);
+    libel_from_axis3f(&in->mag, &out->mag);
+    libel_from_baro(&in->baro, &out->baro);
+}
+
 void controllerPidInit(void)
 {
-  attitudeControllerInit(ATTITUDE_UPDATE_DT);
+  /* attitudeControllerInit(ATTITUDE_UPDATE_DT); */
   /* positionControllerInit(); */
   Libel__controller_pid1_reset(&controller1_mem);
+  Libel__attitudeController_reset(&att_contr_mem);
 }
 
 bool controllerPidTest(void)
 {
   bool pass = true;
 
-  pass &= attitudeControllerTest();
+  /* pass &= attitudeControllerTest(); */
 
   return pass;
 }
@@ -205,10 +228,16 @@ void controllerPid(control_t *control, setpoint_t *setpoint,
   libel_from_setpoint(setpoint, &setpin);
   libel_from_state(state, &st);
   Libel__controller_pid1_step(setpin, st, &controller1_out, &controller1_mem);
-  actuatorThrust = controller1_out.thrust;
+  control->thrust = controller1_out.thrust;
   libel_to_attitude(&controller1_out.att_desired, &attitudeDesired);
 
   if (RATE_DO_EXECUTE(ATTITUDE_RATE, tick)) {
+      libel_from_sensors(sensors, &sens);
+      Libel__attitudeController_step(controller1_out.att_desired, st, sens, setpin, &att_contr_out, &att_contr_mem);
+      control->roll = att_contr_out.roll;
+      control->pitch = att_contr_out.pitch;
+      control->yaw = att_contr_out.yaw;
+
     /* // Switch between manual and automatic position control */
     /* if (setpoint->mode.z == modeDisable) { */
     /*   actuatorThrust = setpoint->thrust; */
@@ -218,31 +247,31 @@ void controllerPid(control_t *control, setpoint_t *setpoint,
     /*   attitudeDesired.pitch = setpoint->attitude.pitch; */
     /* } */
 
-    attitudeControllerCorrectAttitudePID(state->attitude.roll, state->attitude.pitch, state->attitude.yaw,
-                                attitudeDesired.roll, attitudeDesired.pitch, attitudeDesired.yaw,
-                                &rateDesired.roll, &rateDesired.pitch, &rateDesired.yaw);
+  /*   attitudeControllerCorrectAttitudePID(state->attitude.roll, state->attitude.pitch, state->attitude.yaw, */
+  /*                               attitudeDesired.roll, attitudeDesired.pitch, attitudeDesired.yaw, */
+  /*                               &rateDesired.roll, &rateDesired.pitch, &rateDesired.yaw); */
 
-    // For roll and pitch, if velocity mode, overwrite rateDesired with the setpoint
-    // value. Also reset the PID to avoid error buildup, which can lead to unstable
-    // behavior if level mode is engaged later
-    if (setpoint->mode.roll == modeVelocity) {
-      rateDesired.roll = setpoint->attitudeRate.roll;
-      attitudeControllerResetRollAttitudePID();
-    }
-    if (setpoint->mode.pitch == modeVelocity) {
-      rateDesired.pitch = setpoint->attitudeRate.pitch;
-      attitudeControllerResetPitchAttitudePID();
-    }
+  /*   // For roll and pitch, if velocity mode, overwrite rateDesired with the setpoint */
+  /*   // value. Also reset the PID to avoid error buildup, which can lead to unstable */
+  /*   // behavior if level mode is engaged later */
+  /*   if (setpoint->mode.roll == modeVelocity) { */
+  /*     rateDesired.roll = setpoint->attitudeRate.roll; */
+  /*     attitudeControllerResetRollAttitudePID(); */
+  /*   } */
+  /*   if (setpoint->mode.pitch == modeVelocity) { */
+  /*     rateDesired.pitch = setpoint->attitudeRate.pitch; */
+  /*     attitudeControllerResetPitchAttitudePID(); */
+  /*   } */
 
-    // TODO: Investigate possibility to subtract gyro drift.
-    attitudeControllerCorrectRatePID(sensors->gyro.x, -sensors->gyro.y, sensors->gyro.z,
-                             rateDesired.roll, rateDesired.pitch, rateDesired.yaw);
+  /*   // TODO: Investigate possibility to subtract gyro drift. */
+  /*   attitudeControllerCorrectRatePID(sensors->gyro.x, -sensors->gyro.y, sensors->gyro.z, */
+  /*                            rateDesired.roll, rateDesired.pitch, rateDesired.yaw); */
 
-    attitudeControllerGetActuatorOutput(&control->roll,
-                                        &control->pitch,
-                                        &control->yaw);
+  /*   attitudeControllerGetActuatorOutput(&control->roll, */
+  /*                                       &control->pitch, */
+  /*                                       &control->yaw); */
 
-    control->yaw = -control->yaw;
+  /*   control->yaw = -control->yaw; */
 
     cmd_thrust = control->thrust;
     cmd_roll = control->roll;
@@ -254,7 +283,7 @@ void controllerPid(control_t *control, setpoint_t *setpoint,
     accelz = sensors->acc.z;
   }
 
-  control->thrust = actuatorThrust;
+  /* control->thrust = actuatorThrust; */
 
   if (control->thrust == 0)
   {
@@ -268,8 +297,9 @@ void controllerPid(control_t *control, setpoint_t *setpoint,
     cmd_pitch = control->pitch;
     cmd_yaw = control->yaw;
 
-    attitudeControllerResetAllPID();
+    /* attitudeControllerResetAllPID(); */
     Libel__controller_pid1_reset(&controller1_mem);
+    Libel__attitudeController_reset(&att_contr_mem);
     /* positionControllerResetAllPID(); */
 
     // Reset the calculated YAW angle for rate control
@@ -277,70 +307,69 @@ void controllerPid(control_t *control, setpoint_t *setpoint,
   }
 }
 
-/**
- * Logging variables for the command and reference signals for the
- * altitude PID controller
- */
-LOG_GROUP_START(controller)
-/**
- * @brief Thrust command
- */
-LOG_ADD(LOG_FLOAT, cmd_thrust, &cmd_thrust)
-/**
- * @brief Roll command
- */
-LOG_ADD(LOG_FLOAT, cmd_roll, &cmd_roll)
-/**
- * @brief Pitch command
- */
-LOG_ADD(LOG_FLOAT, cmd_pitch, &cmd_pitch)
-/**
- * @brief yaw command
- */
-LOG_ADD(LOG_FLOAT, cmd_yaw, &cmd_yaw)
-/**
- * @brief Gyro roll measurement in radians
- */
-LOG_ADD(LOG_FLOAT, r_roll, &r_roll)
-/**
- * @brief Gyro pitch measurement in radians
- */
-LOG_ADD(LOG_FLOAT, r_pitch, &r_pitch)
-/**
- * @brief Yaw  measurement in radians
- */
-LOG_ADD(LOG_FLOAT, r_yaw, &r_yaw)
-/**
- * @brief Acceleration in the zaxis in G-force
- */
-LOG_ADD(LOG_FLOAT, accelz, &accelz)
-/**
- * @brief Thrust command without (tilt)compensation
- */
-LOG_ADD(LOG_FLOAT, actuatorThrust, &actuatorThrust)
-/**
- * @brief Desired roll setpoint
- */
-LOG_ADD(LOG_FLOAT, roll,      &attitudeDesired.roll)
-/**
- * @brief Desired pitch setpoint
- */
-LOG_ADD(LOG_FLOAT, pitch,     &attitudeDesired.pitch)
-/**
- * @brief Desired yaw setpoint
- */
-LOG_ADD(LOG_FLOAT, yaw,       &attitudeDesired.yaw)
-/**
- * @brief Desired roll rate setpoint
- */
-LOG_ADD(LOG_FLOAT, rollRate,  &rateDesired.roll)
-/**
- * @brief Desired pitch rate setpoint
- */
-LOG_ADD(LOG_FLOAT, pitchRate, &rateDesired.pitch)
-/**
- * @brief Desired yaw rate setpoint
- */
-LOG_ADD(LOG_FLOAT, yawRate,   &rateDesired.yaw)
-LOG_GROUP_STOP(controller)
-
+/* /\** */
+/*  * Logging variables for the command and reference signals for the */
+/*  * altitude PID controller */
+/*  *\/ */
+/* LOG_GROUP_START(controller) */
+/* /\** */
+/*  * @brief Thrust command */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, cmd_thrust, &cmd_thrust) */
+/* /\** */
+/*  * @brief Roll command */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, cmd_roll, &cmd_roll) */
+/* /\** */
+/*  * @brief Pitch command */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, cmd_pitch, &cmd_pitch) */
+/* /\** */
+/*  * @brief yaw command */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, cmd_yaw, &cmd_yaw) */
+/* /\** */
+/*  * @brief Gyro roll measurement in radians */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, r_roll, &r_roll) */
+/* /\** */
+/*  * @brief Gyro pitch measurement in radians */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, r_pitch, &r_pitch) */
+/* /\** */
+/*  * @brief Yaw  measurement in radians */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, r_yaw, &r_yaw) */
+/* /\** */
+/*  * @brief Acceleration in the zaxis in G-force */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, accelz, &accelz) */
+/* /\** */
+/*  * @brief Thrust command without (tilt)compensation */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, actuatorThrust, &actuatorThrust) */
+/* /\** */
+/*  * @brief Desired roll setpoint */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, roll,      &attitudeDesired.roll) */
+/* /\** */
+/*  * @brief Desired pitch setpoint */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, pitch,     &attitudeDesired.pitch) */
+/* /\** */
+/*  * @brief Desired yaw setpoint */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, yaw,       &attitudeDesired.yaw) */
+/* /\** */
+/*  * @brief Desired roll rate setpoint */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, rollRate,  &rateDesired.roll) */
+/* /\** */
+/*  * @brief Desired pitch rate setpoint */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, pitchRate, &rateDesired.pitch) */
+/* /\** */
+/*  * @brief Desired yaw rate setpoint */
+/*  *\/ */
+/* LOG_ADD(LOG_FLOAT, yawRate,   &rateDesired.yaw) */
+/* LOG_GROUP_STOP(controller) */

@@ -68,43 +68,41 @@ const velz_filt_enable: bool = true
 const posz_filt_cutoff: float = 20.0
 const velz_filt_cutoff: float = 20.0
 
-const pid_dt: float = 1.0 /. position_rate
-
 (* Libel__pid_params_25_0000001_0000000_0000000_010000100_00000020_000000truetruetrue5000_00000022_000000__step *)
 const pid_vx_kp: float = 25.0
 const pid_vx_ki: float = 1.0
 const pid_vx_kd: float = 0.0
-const pid_vx_dt: float = pid_dt
+const pid_vx_dt: float = pos_update_dt
 
 (* Libel__pid_params_25_0000001_0000000_0000000_010000100_00000020_000000truetruetrue5000_00000022_000000__step *)
 const pid_vy_kp: float = 25.0
 const pid_vy_ki: float = 1.0
 const pid_vy_kd: float = 0.0
-const pid_vy_dt: float = pid_dt
+const pid_vy_dt: float = pos_update_dt
 
 (* Libel__pid_params_25_00000015_0000000_0000000_010000100_00000020_000000truetruetrue5000_00000032_767500__step *)
 const pid_vz_kp: float = 25.0
 const pid_vz_ki: float = 15.0
 const pid_vz_kd: float = 0.0
-const pid_vz_dt: float = pid_dt
+const pid_vz_dt: float = pos_update_dt
 
 (* Libel__pid_params_2_0000000_0000000_0000000_010000100_00000020_000000truetruefalse5000_0000000_000000__step *)
 const pid_x_kp: float = 2.0
 const pid_x_ki: float = 0.0
 const pid_x_kd: float = 0.0
-const pid_x_dt: float = pid_dt
+const pid_x_dt: float = pos_update_dt
 
 (* Libel__pid_params_2_0000000_0000000_0000000_010000100_00000020_000000truetruefalse5000_0000000_000000__step *)
 const pid_y_kp: float = 2.0
 const pid_y_ki: float = 0.0
 const pid_y_kd: float = 0.0
-const pid_y_dt: float = pid_dt
+const pid_y_dt: float = pos_update_dt
 
 (* Libel__pid_params_2_0000000_5000000_0000000_010000100_00000020_000000truetruefalse5000_0000000_000000__step *)
 const pid_z_kp: float = 2.0
 const pid_z_ki: float = 0.5
 const pid_z_kd: float = 0.0
-const pid_z_dt: float = pid_dt
+const pid_z_dt: float = pos_update_dt
 
 
 (* Libel__constrain_params__5000_0000005000_000000__step *)
@@ -133,8 +131,8 @@ const thrustScale : float = 1000.0
 const pi: float = 3.14159265358979323846
 
 const max_uint16 : int = 0xffff
+const max_int16 : int = 0x7fff
 const max_uint16_f : float = 65535.0
-
 
 fun lpf2pSetCutoffFreq(sample_freq, cutoff_freq: float) returns (b0, b1, b2, a1, a2: float)
 var fr, ohm, c: float;
@@ -162,13 +160,13 @@ let
             input;
 tel
 
-node opt_constrain<<limit : float; lim : bool>>(input : float) returns (output : float)
+node opt_constrain<<limit : float>>(input : float) returns (output : float)
+var lim : bool;
 let
+    lim = round(limit) <> 0;
     output = 
-        if lim then
-            input
-        else
-            constrain<< -. limit, limit>>(input);
+        if lim then constrain<< -. limit, limit>>(input)
+        else input;
 tel
 
 node lpf2p<<samplingRate, cutoffFreq : float; enableDFilter : bool>>(sample : float) returns (output : float)
@@ -185,18 +183,26 @@ let
     output = if enableDFilter then out_filter else sample;
 tel
 
-node pid<<kp, ki, kd, dt, samplingRate, cutoffFreq : float;
-            enableDFilter, iLim, oLim : bool;
-            iLimit, oLimit: float>>(desired, measured : float) returns (output : float)
+node pid_err<<kp, ki, kd, dt, samplingRate, cutoffFreq : float;
+            enableDFilter : bool;
+            iLimit, oLimit: float>>(err: float) returns (output : float)
 var prev_err, integ : float; (* PID memory *)
-    err,deriv : float;
+    deriv : float;
 let
-    err = desired -. measured;
     prev_err = 0.0 fby err;
-    integ = opt_constrain<<iLimit, iLim>>(0.0 fby integ +. err *. dt);
+    integ = opt_constrain<<iLimit>>(0.0 fby integ +. err *. dt);
     deriv = lpf2p<<samplingRate, cutoffFreq, enableDFilter>>((err -. prev_err) /. dt);
 
-    output = opt_constrain<<oLimit, oLim>>(kp *. err +. ki *. integ +. kd *. deriv);
+    output = opt_constrain<<oLimit>>(kp *. err +. ki *. integ +. kd *. deriv);
+tel
+
+node pid<<kp, ki, kd, dt, samplingRate, cutoffFreq : float;
+            enableDFilter : bool;
+            iLimit, oLimit: float>>(desired, measured : float) returns (output : float)
+let
+    output = pid_err<<kp, ki, kd, dt, samplingRate, cutoffFreq,
+                      enableDFilter,
+                      iLimit, oLimit>>(desired -. measured);
 tel
 
 (** Position Controller *)
@@ -291,26 +297,23 @@ let
 
     pitch =
     constrain<<  -. pitchLimit, pitchLimit>>(
-        -.pid<<pid_vx_kp, pid_vx_ki, pid_vx_kd, pid_dt,
+        -.pid<<pid_vx_kp, pid_vx_ki, pid_vx_kd, pos_update_dt,
              position_rate, vel_filt_cutoff, vel_filt_enable,
-             default_pid_integration_lim, true,
              default_pid_integration_limit, pitchLimit *. rpLimitOverhead>>
              (velocity.x, state_body_vx)
     );
 
     roll =
     constrain<< -. rollLimit, rollLimit>>(
-        -.pid<<pid_vy_kp, pid_vy_ki, pid_vy_kd, pid_dt,
+        -.pid<<pid_vy_kp, pid_vy_ki, pid_vy_kd, pos_update_dt,
              position_rate, vel_filt_cutoff, vel_filt_enable,
-             default_pid_integration_lim, true,
              default_pid_integration_limit, rollLimit *. rpLimitOverhead>>
              (velocity.y, state_body_vy)
     );
 
     thrustRaw =
-    pid<<pid_vz_kp, pid_vz_ki, pid_vz_kd, pid_dt,
+    pid<<pid_vz_kp, pid_vz_ki, pid_vz_kd, pos_update_dt,
                      position_rate, velz_filt_cutoff, velz_filt_enable,
-                     default_pid_integration_lim, true,
                      default_pid_integration_limit, max_uint16_f /. 2.0 /. thrustScale>>
                 (velocity.z, st.st_velocity.z);
 
@@ -335,9 +338,8 @@ let
     velocity = {
         x =
             if setpoint.mode.mx = Abs then
-                pid<<pid_x_kp, pid_x_ki, pid_x_kd, pid_dt,
+                pid<<pid_x_kp, pid_x_ki, pid_x_kd, pos_update_dt,
                     position_rate, pos_filt_cutoff, pos_filt_enable,
-                    default_pid_integration_lim, default_pid_output_lim,
                     default_pid_integration_limit, xVelMax *. velMaxOverhead>>
                 (setp_body_x, state_body_x)
             else if not setpoint.velocity_body then
@@ -348,9 +350,8 @@ let
 
         y =
             if setpoint.mode.my = Abs then
-                pid<<pid_y_kp, pid_y_ki, pid_y_kd, pid_dt,
+                pid<<pid_y_kp, pid_y_ki, pid_y_kd, pos_update_dt,
                     position_rate, pos_filt_cutoff, pos_filt_enable,
-                    default_pid_integration_lim, default_pid_output_lim,
                     default_pid_integration_limit, yVelMax *. velMaxOverhead>>
                 (setp_body_y, state_body_y)
             else if not setpoint.velocity_body then
@@ -361,9 +362,8 @@ let
 
         z =
             if setpoint.mode.mz = Abs then
-                pid<<pid_z_kp, pid_z_ki, pid_z_kd, pid_dt,
+                pid<<pid_z_kp, pid_z_ki, pid_z_kd, pos_update_dt,
                     position_rate, posz_filt_cutoff, posz_filt_enable,
-                    default_pid_integration_lim, default_pid_output_lim,
                     default_pid_integration_limit, zVelMax *. velMaxOverhead>>
                 (setpoint.position.z, st.st_position.z)
             else
@@ -407,6 +407,122 @@ let
         end
     | false do
     end;
+tel
+
+(** Attitude Controller *)
+
+node attitudeControllerCorrectAttitudePID
+    (eulerRollActual, eulerPitchActual, eulerYawActual,
+     eulerRollDesired, eulerPitchDesired, eulerYawDesired : float;
+     setpoint : setpoint)
+    returns (rollRateDesired, pitchRateDesired, yawRateDesired : float);
+var yaw_err, real_yaw_err, rollRateDesired_pid, pitchRateDesired_pid : float;
+    resetRoll, resetPitch : bool;
+let
+    resetRoll = setpoint.mode.mroll = Velocity;
+    resetPitch = setpoint.mode.mpitch = Velocity;
+
+    yaw_err = eulerYawDesired -. eulerYawActual;
+    real_yaw_err = 
+        if yaw_err >. 180.0 then
+            yaw_err -. 360.0
+        else if yaw_err <. -. 180.0 then
+            yaw_err +. 360.0
+        else
+            yaw_err;
+
+    reset
+        rollRateDesired_pid = 
+            pid<<pid_roll_kp, pid_roll_ki, pid_roll_kd,
+                 attitude_update_dt, attitude_rate, attitude_lpf_cutoff_freq,
+                 attitude_lpf_enable,
+                 pid_roll_integration_limit, 0.0>>(eulerRollDesired, eulerRollActual)
+    every resetRoll;
+
+    reset
+        pitchRateDesired_pid =
+            pid<<pid_pitch_kp, pid_pitch_ki, pid_pitch_kd,
+                 attitude_update_dt, attitude_rate, attitude_lpf_cutoff_freq,
+                 attitude_lpf_enable,
+                 pid_pitch_integration_limit, 0.0>>(eulerPitchDesired, eulerPitchActual)
+    every resetPitch;
+
+    rollRateDesired = 
+        if resetRoll then
+            setpoint.attitude_rate.roll
+        else
+            rollRateDesired_pid;
+
+    pitchRateDesired =
+        if resetPitch then
+            setpoint.attitude_rate.pitch
+        else
+            pitchRateDesired_pid;
+
+
+    yawRateDesired =
+        pid_err<<pid_yaw_kp, pid_yaw_ki, pid_yaw_kd,
+                 attitude_update_dt, attitude_rate, attitude_lpf_cutoff_freq,
+                 attitude_lpf_enable,
+                 pid_yaw_integration_limit, 0.0>>
+                 (real_yaw_err);
+tel
+
+node saturate_int16(xf : float) returns (y : int)
+var x : int;
+let
+    x = round(floor(xf));
+    y = if x > max_int16 then max_int16
+        else if x < -max_int16 then -max_int16 else x
+tel
+
+node attitudeControllerCorrectRatePID
+    (rollRateActual, pitchRateActual, yawRateActual,
+     rollRateDesired, pitchRateDesired, yawRateDesired : float)
+    returns (rollOutput, pitchOutput, yawOutput : int);
+var rollOutput_float, pitchOutput_float, yawOutput_float : float;
+let
+    rollOutput_float =
+        pid<<pid_roll_rate_kp, pid_roll_rate_ki, pid_roll_rate_kd,
+             attitude_update_dt, attitude_rate, attitude_lpf_rate_cutoff_freq,
+             attitude_lpf_rate_enable,
+             pid_roll_rate_integration_limit, 0.0>>(rollRateDesired, rollRateActual);
+
+    pitchOutput_float =
+        pid<<pid_pitch_rate_kp, pid_pitch_rate_ki, pid_pitch_rate_kd,
+             attitude_update_dt, attitude_rate, attitude_lpf_rate_cutoff_freq,
+             attitude_lpf_rate_enable,
+             pid_pitch_rate_integration_limit, 0.0>>(pitchRateDesired, pitchRateActual);
+
+    yawOutput_float =
+        pid<<pid_yaw_rate_kp, pid_yaw_rate_ki, pid_yaw_rate_kd,
+             attitude_update_dt, attitude_rate, attitude_lpf_rate_cutoff_freq,
+             attitude_lpf_rate_enable,
+             pid_yaw_rate_integration_limit, 0.0>>(yawRateDesired, yawRateActual);
+
+    rollOutput  = saturate_int16(rollOutput_float);
+    pitchOutput = saturate_int16(pitchOutput_float);
+    yawOutput   = - saturate_int16(yawOutput_float);
+tel
+
+node attitudeController(attitudeDesired : attitude;
+                        st : state_t;
+                        sensors : sensor_data;
+                        setpoint : setpoint)
+    returns (roll, pitch, yaw : int);
+var rollRateDesired, pitchRateDesired, yawRateDesired : float;
+let
+    (rollRateDesired, pitchRateDesired, yawRateDesired) = 
+        attitudeControllerCorrectAttitudePID(
+            st.st_attitude.roll, st.st_attitude.pitch, st.st_attitude.yaw,
+            attitudeDesired.roll, attitudeDesired.pitch, attitudeDesired.yaw,
+            setpoint
+        );
+
+    (roll,pitch,yaw) = attitudeControllerCorrectRatePID(
+            sensors.gyro.x, -. sensors.gyro.y, sensors.gyro.z,
+            rollRateDesired, pitchRateDesired, yawRateDesired
+        );
 tel
 
 (** Power distribution *)
