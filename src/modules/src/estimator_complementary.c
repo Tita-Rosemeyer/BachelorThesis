@@ -38,6 +38,8 @@
 #include "stabilizer_types.h"
 #include "static_mem.h"
 
+#include "estimator_lib.h"
+
 static Axis3f gyro;
 static Axis3f acc;
 static baro_t baro;
@@ -49,8 +51,7 @@ static tofMeasurement_t tof;
 #define POS_UPDATE_RATE RATE_100_HZ
 #define POS_UPDATE_DT 1.0/POS_UPDATE_RATE
 
-    void
-    estimatorComplementaryInit(void)
+void estimatorComplementaryInit(void)
 {
   sensfusion6Init();
 }
@@ -62,6 +63,77 @@ bool estimatorComplementaryTest(void)
   pass &= sensfusion6Test();
 
   return pass;
+}
+
+static Estimator__state_t st;
+static Estimator__sensor_data sens;
+static Estimator__estimator_complementary_mem estimator_complementary_mem;
+static Estimator__estimator_complementary_out estimator_complementary_out;
+
+void libel_from_vec3(const struct vec3_s *in, Estimator__vec3 *out) {
+    out->x = in->x;
+    out->y = in->y;
+    out->z = in->z;
+}
+
+void libel_to_vec3(const Estimator__vec3 *in, struct vec3_s *out) {
+    out->x = in->x;
+    out->y = in->y;
+    out->z = in->z;
+}
+
+void libel_from_attitude(const attitude_t *in, Estimator__attitude *out) {
+    out->roll = in->roll;
+    out->pitch = in->pitch;
+    out->yaw = in->yaw;
+}
+
+void libel_to_attitude(const Estimator__attitude *in, attitude_t *out) {
+    out->roll = in->roll;
+    out->pitch = in->pitch;
+    out->yaw = in->yaw;
+}
+
+void libel_from_quaternion(const quaternion_t *in, Estimator__quaternion *out) {
+    out->qx = in->x;
+    out->qy = in->y;
+    out->qz = in->z;
+    out->qw = in->w;
+}
+
+void libel_to_quaternion(const Estimator__quaternion *in, quaternion_t *out) {
+    out->x = in->qx;
+    out->y = in->qy;
+    out->z = in->qz;
+    out->w = in->qw;
+}
+
+void libel_to_state(Estimator__state_t *in, const state_t *out) {
+    libel_to_attitude(&in->st_attitude, &out->attitude);
+    libel_to_quaternion(&in->st_attitude_quat, &out->attitudeQuaternion);
+    libel_to_vec3(&in->st_position, &out->position);
+    libel_to_vec3(&in->st_velocity, &out->velocity);
+    libel_to_vec3(&in->st_acc, &out->acc);
+}
+
+void libel_from_baro(const baro_t *in, Estimator__baro *out) {
+    out->pressure = in->pressure;
+    out->temperature = in->temperature;
+    out->asl = in->asl;
+}
+
+void libel_from_tof(const tofMeasurement_t *in, Estimator__tof *out) {
+    out->timestamp = in->timestamp;
+    out->distance = in->distance;
+    out->stdDev = in->stdDev;
+}
+
+void libel_from_sensors(const Axis3f *acc, const Axis3f *gyro, const baro_t *baro, 
+                        const tofMeasurement_t *tof, Estimator__sensor_data *out) {
+    libel_from_axis3f(acc, &out->acc);
+    libel_from_axis3f(gyro, &out->gyro);
+    libel_from_tof(tof, &out->tof);
+    libel_from_baro(baro, &out->baro);
 }
 
 void estimatorComplementary(state_t *state, const uint32_t tick)
@@ -88,31 +160,8 @@ void estimatorComplementary(state_t *state, const uint32_t tick)
     }
   }
 
-  // Update filter
-  if (RATE_DO_EXECUTE(ATTITUDE_UPDATE_RATE, tick)) {
-    sensfusion6UpdateQ(gyro.x, gyro.y, gyro.z,
-                        acc.x, acc.y, acc.z,
-                        ATTITUDE_UPDATE_DT);
+  libel_from_sensors(&acc, &gyro, &baro, &tof, &sens);
+  Estimator__estimator_complementary_step(sens, &estimator_complementary_out, &estimator_complementary_mem);
+  libel_to_state(&estimator_complementary_out.st, state);
 
-    // Save attitude, adjusted for the legacy CF2 body coordinate system
-    sensfusion6GetEulerRPY(&state->attitude.roll, &state->attitude.pitch, &state->attitude.yaw);
-
-    // Save quaternion, hopefully one day this could be used in a better controller.
-    // Note that this is not adjusted for the legacy coordinate system
-    sensfusion6GetQuaternion(
-      &state->attitudeQuaternion.x,
-      &state->attitudeQuaternion.y,
-      &state->attitudeQuaternion.z,
-      &state->attitudeQuaternion.w);
-
-    state->acc.z = sensfusion6GetAccZWithoutGravity(acc.x,
-                                                    acc.y,
-                                                    acc.z);
-
-    positionUpdateVelocity(state->acc.z, ATTITUDE_UPDATE_DT);
-  }
-
-  if (RATE_DO_EXECUTE(POS_UPDATE_RATE, tick)) {
-    positionEstimate(state, &baro, &tof, POS_UPDATE_DT, tick);
-  }
 }

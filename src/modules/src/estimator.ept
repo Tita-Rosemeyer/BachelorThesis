@@ -1,0 +1,313 @@
+open Mathext
+
+(* Constants *)
+
+const rate_1000_hz: float = 1000.0
+const rate_500_hz: float = 500.0
+const rate_250_hz: float = 250.0
+const rate_100_hz: float = 100.0
+const rate_50_hz: float = 50.0
+const rate_25_hz: float = 25.0
+
+const attitude_update_rate: float = rate_250_hz
+const attitude_update_dt: float = 1.0 /. attitude_update_rate
+const position_update_rate: float = rate_100_hz
+const position_update_dt: float = 1.0 /. position_update_rate
+
+const pi_f : float = 3.141592653589793
+const twoKp : float = 2.0 *. 0.4
+const twoKi : float = 2.0 *. 0.001
+const grav_const : float = 9.81
+const max_sample_age: int = 50
+
+(* selfstate variables that remain constant *)
+const vAccDeadband: float = 0.04
+const velZalpha: float = 0.995
+const estAlphaZrange: float = 0.90
+const estAlphaAsl: float = 0.90
+const velocityFactor: float = 1.0
+
+(* ------------------------------------------------------------------------------- *)
+(* Data structures *)
+
+type vec3 = {
+    x : float;
+    y : float;
+    z : float
+}
+
+type attitude = {
+    roll : float;
+    pitch : float;
+    yaw : float
+}
+
+type quaternion = {
+    qx : float;
+    qy : float;
+    qz : float;
+    qw : float
+}
+
+type state_t = {
+    st_attitude : attitude;
+    st_attitude_quat : quaternion;
+    st_position : vec3;
+    st_velocity : vec3;
+    st_acc : vec3
+}
+
+type baro = {
+    pressure : float;
+    temperature : float;
+    asl : float
+}
+
+type tof = {
+    timestamp : int;
+    distance : float;
+    stdDev   : float
+}
+
+type sensor_data = {
+    acc : vec3;
+    gyro : vec3;
+    tof : tof;
+    baro : baro
+}
+
+(* ------------------------------------------------------------------------------- *)
+(* miscelaneous functions *)
+
+(* function for frequency *)
+node everyn<<n:int>>()
+returns (ok: bool);
+var last count: int = 0;
+let
+    count = (last count + 1) % n;
+    ok = (count = 0);
+tel
+
+node normalize(acc: vec3)
+returns (acc_norm: vec3);
+var recipNorm : float;
+let
+    recipNorm = 1.0 /. sqrt(acc.x *. acc.x +. acc.y *. acc.y +. acc.z *. acc.z);
+    acc_norm = {x = acc.x *. recipNorm;
+                y = acc.y *. recipNorm;
+                z = acc.z *. recipNorm};
+tel
+
+node normalize_quat(q: quaternion)
+returns (q_norm: quaternion);
+var recipNorm : float;
+let
+    recipNorm = 1.0 /. sqrt(q.qx *. q.qx +. q.qy *. q.qy +. q.qz *. q.qz +. q.qw *. q.qw);
+    q_norm = {qx = q.qx *. recipNorm;
+              qy = q.qy *. recipNorm;
+              qz = q.qz *. recipNorm;
+              qw = q.qw *. recipNorm};
+tel
+
+(* Estimated direction of gyro and vector perpendicular to magnetic flux *)
+(* Error is sum of cross product between estimated and measured direction of gyro *)
+fun getEstimatedgyroAndMagError(q: quaternion; acc_1: vec3)
+returns (halfe: vec3);
+var halfvx, halfvy, halfvz : float;
+let
+    halfvx = q.qx *. q.qz -. q.qw *. q.qy;
+    halfvy = q.qw *. q.qx +. q.qy *. q.qz;
+    halfvz = q.qw *. q.qw -. 0.5 +. q.qz *. q.qz;
+    halfe = {x = (acc_1.y *. halfvz -. acc_1.z *. halfvy);
+             y = (acc_1.z *. halfvx -. acc_1.x *. halfvz);
+             z = (acc_1.x *. halfvy -. acc_1.y *. halfvx)};
+tel
+
+(* Compute and apply integral feedback *)
+node apply_integral_feedback(prev_gyro: vec3; halfe: vec3; dt: float)
+returns (gyro: vec3);
+var last integralFBx: float = 0.0;
+    last integralFBy: float = 0.0;
+    last integralFBz: float = 0.0;
+let
+    integralFBx = (last integralFBx) +. twoKi *. halfe.x *. dt;
+    integralFBy = (last integralFBy) +. twoKi *. halfe.y *. dt;
+    integralFBz = (last integralFBz) +. twoKi *. halfe.z *. dt;
+    gyro = {x = prev_gyro.x +. integralFBx;
+            y = prev_gyro.y +. integralFBy;
+            z = prev_gyro.z +. integralFBz};
+tel
+
+node apply_proportional_feedback(gr1: vec3; halfe: vec3)
+returns (gyro: vec3);
+let
+    gyro = {x = gr1.x +. twoKp *. halfe.x;
+            y = gr1.y +. twoKp *. halfe.y;
+            z = gr1.z +. twoKp *. halfe.z};
+tel
+
+(* Integrate rate of change of quaternion *)
+fun integrateQuaternion(q: quaternion; gyro: vec3; dt: float)
+returns (q_new: quaternion);
+var gx, gy, gz : float;
+let
+    gx = gyro.x *. (0.5 *. dt);
+    gy = gyro.y *. (0.5 *. dt);
+    gz = gyro.z *. (0.5 *. dt);
+    q_new = {qw = q.qw -. (q.qx *. gx +. q.qy *. gy +. q.qz *. gz);
+             qx = q.qx +. (q.qw *. gx +. q.qy *. gz -. q.qz *. gy);
+             qy = q.qy +. (q.qw *. gy -. q.qx *. gz +. q.qz *. gx);
+             qz = q.qz +. (q.qw *. gz +. q.qx *. gy -. q.qy *. gx)};
+tel
+
+fun deadband(value: float; threshold: float)
+returns (v: float);
+let
+    v = if fabs(value) <. threshold then 
+            0.0 
+        else if value >. 0.0 then 
+            value -. threshold 
+        else if value <. 0.0 then 
+            value +. threshold 
+        else 
+            value;
+tel
+
+(* ------------------------------------------------------------------------------- *)
+(* sensfusion6 *)
+
+node sensfusion6_update_QImpl(gyro: vec3; acc: vec3; dt: float)
+returns (last q: quaternion = {qw = 1.0; qx = 0.0; qy = 0.0; qz = 0.0});
+var grx, gry, grz : float;
+    last acc_1 : vec3 = {x = 0.0; y = 0.0; z = 0.0};
+    last halfe : vec3 = {x = 0.0; y = 0.0; z = 0.0};
+    last gr1 : vec3 = {x = 0.0; y = 0.0; z = 0.0};
+    last gr2 : vec3 = {x = 0.0; y = 0.0; z = 0.0};
+    q_temp : quaternion;
+let
+    grx = gyro.x *. pi_f /. 180.0;
+    gry = gyro.y *. pi_f /. 180.0;
+    grz = gyro.z *. pi_f /. 180.0;
+
+    switch (not ((acc.x = 0.0) and (acc.y = 0.0) and (acc.z = 0.0)))
+    | true do
+        acc_1 = normalize(acc);
+        halfe = getEstimatedgyroAndMagError(last q, acc_1);
+        gr1 = apply_integral_feedback({x=grx; y=gry; z=grz}, halfe, dt);
+        gr2 = apply_proportional_feedback(gr1, halfe);
+    | false do
+    end;
+
+    q_temp = integrateQuaternion(last q, gr2, dt);
+    q = normalize_quat(q_temp);
+tel
+
+node sensfusion6_update_Q(gyro: vec3; acc: vec3; dt: float)
+returns (q: quaternion; grav: vec3; last baseZacc: float = 0.0);
+var last is_calibrated : bool = false;
+let
+    q = sensfusion6_update_QImpl(gyro, acc, dt);
+    grav = {x = 2.0 *. (q.qx *. q.qz -. q.qw *. q.qy);
+            y = 2.0 *. (q.qw *. q.qx +. q.qy *. q.qz);
+            z = q.qw *. q.qw -. q.qx *. q.qx -. q.qy *. q.qy +. q.qz *. q.qz};
+    switch (not (last is_calibrated))
+    | true do
+        baseZacc = acc.x *. grav.x +. acc.y *. grav.y +. acc.z *. grav.z;
+        is_calibrated = true;
+    | false do
+    end;
+tel
+
+node sensfusion6_get_euler_rpy(q: quaternion; grav: vec3)
+returns (attitude: attitude);
+var gx: float;
+let
+    gx = if (grav.x >. 1.0) then 1.0
+        else if (grav.x <. (-.1.0)) then -.1.0
+        else grav.x;
+
+    attitude = {yaw = atan2(2.0*.(q.qw*.q.qz +. q.qx*.q.qy), (q.qw*.q.qw +. q.qx*.q.qx -. q.qy*.q.qy -. q.qz*.q.qz)) *. 180.0 /. pi_f;
+                pitch = asin(gx) *. 180.0 /. pi_f;
+                roll = atan2(grav.y, grav.z) *. 180.0 /. pi_f};
+tel
+
+(* ------------------------------------------------------------------------------- *)
+(* position estimate *)
+
+node position_update_velocity(accWz, init_velocityZ, dt : float)
+returns (final_velocityZ: float);
+var accWz1: float;
+let
+    accWz1 = init_velocityZ +. deadband(accWz, vAccDeadband) *. dt *. grav_const;
+    final_velocityZ = accWz1 *. velZalpha;
+tel
+
+(* Improved_BARO_Z_HOLD macro not defined *)
+(* Using 1 instead of xTaskGetTickCount in isSampleUseful *)
+
+node positionEstimate(baro: baro; tof: tof; dt, init_velocityZ: float;)
+returns (position: vec3; vel_z: float);
+var last estimatedZ: float = 0.0;
+    filteredZ: float;
+    surfaceFollowingMode: bool;
+    isSampleUseful: bool;
+let
+    isSampleUseful = ((1 - tof.timestamp) <= max_sample_age);
+    surfaceFollowingMode = if (isSampleUseful) then true else false;
+    
+    switch (surfaceFollowingMode)
+    | true do
+        filteredZ = (estAlphaZrange) *. last estimatedZ +. (1.0 -. estAlphaZrange) *. tof.distance;
+        estimatedZ = filteredZ +. (velocityFactor *. init_velocityZ *. dt);
+    | false do
+        filteredZ = if (last estimatedZ = 0.0) then 
+                        baro.asl
+                    else 
+                        (estAlphaAsl) *. last estimatedZ +. (1.0 -. estAlphaAsl) *. baro.asl;
+        estimatedZ = filteredZ +. (velocityFactor *. init_velocityZ *. dt);
+    end;
+
+    position = {x = 0.0; y = 0.0; z = estimatedZ};
+    vel_z = (estimatedZ -. (last estimatedZ)) /. dt;
+tel
+
+(* ------------------------------------------------------------------------------- *)
+(* main state estimator *)
+
+node estimator_complementary(sensor: sensor_data)
+returns (st : state_t);
+var freq_att_update, freq_pos_update : bool;
+    last grav: vec3 = {x = 0.0; y = 0.0; z = 0.0};
+    last st_attitude: attitude = {roll = 0.0; pitch = 0.0; yaw = 0.0};
+    last st_attitude_quat: quaternion = {qw = 1.0; qx = 0.0; qy = 0.0; qz = 0.0};
+    last st_acc_z: float = 0.0;
+    last baseZacc: float = 0.0;
+    last velocityZ: float = 0.0;
+    last st_position: vec3 = {x = 0.0; y = 0.0; z = 0.0};
+    last st_velocity_z: float = 0.0;
+let
+    freq_att_update = everyn<<25>>();
+    freq_pos_update = everyn<<10>>();
+
+    switch freq_att_update
+    | true do
+        (st_attitude_quat, grav, baseZacc) = sensfusion6_update_Q(sensor.gyro, sensor.acc, attitude_update_dt);
+        st_attitude = sensfusion6_get_euler_rpy(st_attitude_quat, grav);
+        st_acc_z = (sensor.acc.x *. grav.x +. sensor.acc.y *. grav.y +. sensor.acc.z *. grav.z) -. baseZacc;
+        velocityZ = position_update_velocity(st_acc_z, last velocityZ, attitude_update_dt);
+    | false do
+    end;
+
+    switch freq_pos_update
+    | true do
+        (st_position, st_velocity_z) = 
+            positionEstimate(sensor.baro, sensor.tof, position_update_dt, velocityZ);
+    | false do
+    end;
+
+    st = {  st_attitude = st_attitude;
+            st_attitude_quat = st_attitude_quat;
+            st_position = st_position; 
+            st_velocity = {x = 0.0; y = 0.0; z = st_velocity_z};
+            st_acc = {x = 0.0; y = 0.0; z = st_acc_z}};
+tel
