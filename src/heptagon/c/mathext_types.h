@@ -61,6 +61,24 @@ typedef struct Mathext__atan_out {
 
 void Mathext__atan_step(float x, Mathext__atan_out* _out);
 
+typedef struct Mathext__atan2_out {
+  float z;
+} Mathext__atan2_out;
+
+void Mathext__atan2_step(float x, float y, Mathext__atan2_out* _out);
+
+typedef struct Mathext__sqrt_out {
+  float y;
+} Mathext__sqrt_out;
+
+void Mathext__sqrt_step(float x, Mathext__sqrt_out* _out);
+
+typedef struct Mathext__fabs_out {
+  float y;
+} Mathext__fabs_out;
+
+void Mathext__fabs_step(float x, Mathext__fabs_out* _out);
+
 typedef struct Mathext__min_float_out {
   float z;
 } Mathext__min_float_out;

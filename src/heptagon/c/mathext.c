@@ -41,6 +41,18 @@ void Mathext__atan_step(float x, Mathext__atan_out* _out) {
   _out->y = atanf(x);
 }
 
+void Mathext__atan2_step(float x, float y, Mathext__atan2_out* _out) {
+  _out->z = atan2f(x, y);
+}
+
+void Mathext__sqrt_step(float x, Mathext__sqrt_out* _out) {
+  _out->y = sqrt(x);
+}
+
+void Mathext__fabs_step(float x, Mathext__fabs_out* _out) {
+  _out->y = fabs(x);
+}
+
 void Mathext__min_float_step(float x, float y, Mathext__min_float_out* _out) {
   _out->z = (x < y)? x : y;
 }
