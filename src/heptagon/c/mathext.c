@@ -1,5 +1,6 @@
 #include <math.h>
 #include "mathext_types.h"
+#include "FreeRTOS.h"
 
 void Mathext__float_step(int x, Mathext__float_out* _out) {
   _out->y = (float)x;
@@ -50,7 +51,7 @@ void Mathext__sqrt_step(float x, Mathext__sqrt_out* _out) {
 }
 
 void Mathext__fabs_step(float x, Mathext__fabs_out* _out) {
-  _out->y = fabs(x);
+  _out->y = fabsf(x);
 }
 
 void Mathext__min_float_step(float x, float y, Mathext__min_float_out* _out) {
@@ -69,4 +70,19 @@ void Mathext__power_step(float x, float y, Mathext__power_out *out)
 void Mathext__fmod_step(float x, float y, Mathext__fmod_out* _out) {
   _out->z = fmod(x, y);
 }
+
+void Mathext__invSqrt_step(float x, Mathext__invSqrt_out* _out) {
+  float halfx = 0.5f * x;
+  float y = x;
+  long i = *(long*)&y;
+  i = 0x5f3759df - (i>>1);
+  y = *(float*)&i;
+  y = y * (1.5f - (halfx * y * y));
+  _out->y = y;
+}
+
+void Mathext__xTaskGetTickCount_step(Mathext__xTaskGetTickCount_out* _out) {
+  _out->tick = xTaskGetTickCount();
+}
+
 

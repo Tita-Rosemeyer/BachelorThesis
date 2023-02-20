@@ -28,3 +28,5 @@ val fun power(x : float; y : float) returns (r : float)
 (* Return the floating-point remainder of x / y *)
 external val fun fmod(x:float; y:float) returns (z:float)
 
+external val fun invSqrt(x:float) returns (y:float)
+external val fun xTaskGetTickCount() returns (tick: int)

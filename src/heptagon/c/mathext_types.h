@@ -103,4 +103,19 @@ typedef struct Mathext__fmod_out {
 
 void Mathext__fmod_step(float x, float y, Mathext__fmod_out* _out);
 
+typedef struct Mathext__invSqrt_out {
+  float y;
+} Mathext__invSqrt_out;
+
+void Mathext__invSqrt_step(float x, Mathext__invSqrt_out* _out);
+
+typedef struct Mathext__xTaskGetTickCount_out {
+  int tick;
+} Mathext__xTaskGetTickCount_out;
+
+void Mathext__xTaskGetTickCount_step(Mathext__xTaskGetTickCount_out* _out);
+
+#include <stdint.h>
+uint32_t xTaskGetTickCount( void );
+
 #endif // MATHEXT_H
