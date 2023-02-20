@@ -5,6 +5,13 @@
         "**/bower_components": true
     },
     "files.associations": {
-        "bootloader.h": "c"
+        "bootloader.h": "c",
+        "stabilizer_types.h": "c",
+        "libel.h": "c",
+        "estimator_complementary.h": "c",
+        "autoconf.h": "c",
+        "led.h": "c",
+        "types.h": "c",
+        "ledseq.h": "c"
     }
 }

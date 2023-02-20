@@ -38,21 +38,21 @@
 #include "stabilizer_types.h"
 #include "static_mem.h"
 
-#include "estimator_lib.h"
+#include "log.h"
+#include "libel.h"
 
 static Axis3f gyro;
 static Axis3f acc;
 static baro_t baro;
 static tofMeasurement_t tof;
 
-#define ATTITUDE_UPDATE_RATE RATE_250_HZ
-#define ATTITUDE_UPDATE_DT 1.0/ATTITUDE_UPDATE_RATE
-
-#define POS_UPDATE_RATE RATE_100_HZ
-#define POS_UPDATE_DT 1.0/POS_UPDATE_RATE
+static Libel__sensor_data_est sens;
+static Libel__estimator_complementary_mem estimator_complementary_mem;
+static Libel__estimator_complementary_out estimator_complementary_out;
 
 void estimatorComplementaryInit(void)
 {
+  Libel__estimator_complementary_reset(&estimator_complementary_mem);
   sensfusion6Init();
 }
 
@@ -65,75 +65,76 @@ bool estimatorComplementaryTest(void)
   return pass;
 }
 
-static Estimator__state_t st;
-static Estimator__sensor_data sens;
-static Estimator__estimator_complementary_mem estimator_complementary_mem;
-static Estimator__estimator_complementary_out estimator_complementary_out;
-
-void libel_from_vec3(const struct vec3_s *in, Estimator__vec3 *out) {
+void libel_from_vec3_estimator(const struct vec3_s *in, Libel__vec3 *out) {
     out->x = in->x;
     out->y = in->y;
     out->z = in->z;
 }
 
-void libel_to_vec3(const Estimator__vec3 *in, struct vec3_s *out) {
+void libel_to_vec3_estimator(const Libel__vec3 *in, struct vec3_s *out) {
     out->x = in->x;
     out->y = in->y;
     out->z = in->z;
 }
 
-void libel_from_attitude(const attitude_t *in, Estimator__attitude *out) {
+void libel_from_attitude_estimator(const attitude_t *in, Libel__attitude *out) {
     out->roll = in->roll;
     out->pitch = in->pitch;
     out->yaw = in->yaw;
 }
 
-void libel_to_attitude(const Estimator__attitude *in, attitude_t *out) {
+void libel_to_attitude_estimator(const Libel__attitude *in, attitude_t *out) {
     out->roll = in->roll;
     out->pitch = in->pitch;
     out->yaw = in->yaw;
 }
 
-void libel_from_quaternion(const quaternion_t *in, Estimator__quaternion *out) {
+void libel_from_quaternion_estimator(const quaternion_t *in, Libel__quaternion *out) {
     out->qx = in->x;
     out->qy = in->y;
     out->qz = in->z;
     out->qw = in->w;
 }
 
-void libel_to_quaternion(const Estimator__quaternion *in, quaternion_t *out) {
+void libel_to_quaternion_estimator(const Libel__quaternion *in, quaternion_t *out) {
     out->x = in->qx;
     out->y = in->qy;
     out->z = in->qz;
     out->w = in->qw;
 }
 
-void libel_to_state(Estimator__state_t *in, const state_t *out) {
-    libel_to_attitude(&in->st_attitude, &out->attitude);
-    libel_to_quaternion(&in->st_attitude_quat, &out->attitudeQuaternion);
-    libel_to_vec3(&in->st_position, &out->position);
-    libel_to_vec3(&in->st_velocity, &out->velocity);
-    libel_to_vec3(&in->st_acc, &out->acc);
+void libel_to_state_estimator(const Libel__state_t *in, state_t *out) {
+    libel_to_attitude_estimator(&in->st_attitude, &out->attitude);
+    libel_to_quaternion_estimator(&in->st_attitude_quat, &out->attitudeQuaternion);
+    libel_to_vec3_estimator(&in->st_position, &out->position);
+    libel_to_vec3_estimator(&in->st_velocity, &out->velocity);
+    libel_to_vec3_estimator(&in->st_acc, &out->acc);
 }
 
-void libel_from_baro(const baro_t *in, Estimator__baro *out) {
+void libel_from_baro_estimator(const baro_t *in, Libel__baro *out) {
     out->pressure = in->pressure;
     out->temperature = in->temperature;
     out->asl = in->asl;
 }
 
-void libel_from_tof(const tofMeasurement_t *in, Estimator__tof *out) {
+void libel_from_tof_estimator(const tofMeasurement_t *in, Libel__tof *out) {
     out->timestamp = in->timestamp;
     out->distance = in->distance;
     out->stdDev = in->stdDev;
 }
 
-void libel_from_sensors(const Axis3f *acc, const Axis3f *gyro, const baro_t *baro, 
-                        const tofMeasurement_t *tof, Estimator__sensor_data *out) {
-    libel_from_axis3f(acc, &out->acc);
-    libel_from_axis3f(gyro, &out->gyro);
-    libel_from_tof(tof, &out->tof);
-    libel_from_baro(baro, &out->baro);
+void libel_from_axis3f_estimator(const Axis3f *in, Libel__vec3 *out) {
+    out->x = in->x;
+    out->y = in->y;
+    out->z = in->z;
+}
+
+void libel_from_sensors_estimator(const Axis3f *acc, const Axis3f *gyro, const baro_t *baro, 
+                        const tofMeasurement_t *tof, Libel__sensor_data_est *out) {
+    libel_from_axis3f_estimator(acc, &out->acc_est);
+    libel_from_axis3f_estimator(gyro, &out->gyro_est);
+    libel_from_tof_estimator(tof, &out->tof);
+    libel_from_baro_estimator(baro, &out->baro_est);
 }
 
 void estimatorComplementary(state_t *state, const uint32_t tick)
@@ -160,8 +161,27 @@ void estimatorComplementary(state_t *state, const uint32_t tick)
     }
   }
 
-  libel_from_sensors(&acc, &gyro, &baro, &tof, &sens);
-  Estimator__estimator_complementary_step(sens, &estimator_complementary_out, &estimator_complementary_mem);
-  libel_to_state(&estimator_complementary_out.st, state);
+  libel_from_sensors_estimator(&acc, &gyro, &baro, &tof, &sens);
+  Libel__estimator_complementary_step(sens, &estimator_complementary_out, &estimator_complementary_mem);
+  libel_to_state_estimator(&estimator_complementary_out.st, state);
 
 }
+
+
+LOG_GROUP_START(tof)
+
+/**
+ * @brief Distance 
+ */
+LOG_ADD_CORE(LOG_FLOAT, dista, &tof.distance)
+
+/**
+ * @brief Standard Deviation
+ */
+LOG_ADD_CORE(LOG_FLOAT, stdDev, &tof.stdDev)
+
+/**
+ * @brief timestamp (s)
+ */
+LOG_ADD_CORE(LOG_FLOAT, time, &tof.timestamp)
+LOG_GROUP_STOP(acc)
