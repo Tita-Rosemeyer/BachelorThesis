@@ -37,6 +37,7 @@
 #include "motors.h"
 #include "pm.h"
 #include "platform.h"
+#include "led.h"
 
 #include "stabilizer.h"
 #include "libel.h"
@@ -118,6 +119,8 @@ static struct {
 STATIC_MEM_TASK_ALLOC(stabilizerTask, STABILIZER_TASK_STACKSIZE);
 
 static void stabilizerTask(void* param);
+static Libel__ledseq_task_mem ledseqTaskMem;
+static Libel__ledseq_task_out ledseqTaskOut;
 
 static void calcSensorToOutputLatency(const sensorData_t *sensorData)
 {
@@ -209,6 +212,20 @@ static void checkEmergencyStopTimeout()
   }
 }
 
+void libel_from_ledseq_task(const Libel__ledseq_task_out *in, int *out)
+{
+  out = in->led_state;
+}
+
+void set_leds(int *led_state)
+{
+  DEBUG_PRINT("set_leds entered\n");
+  for(int i = 0; i < LED_NUM; i++) {
+    ledSet(i, led_state[i]);
+    DEBUG_PRINT("led %d set to %d\n", i, led_state[i]);
+  }
+}
+
 /* The stabilizer loop runs at 1kHz (stock) or 500Hz (kalman). It is the
  * responsibility of the different functions to run slower by skipping call
  * (ie. returning without modifying the output structure).
@@ -236,10 +253,19 @@ static void stabilizerTask(void* param)
   rateSupervisorInit(&rateSupervisorContext, xTaskGetTickCount(), M2T(1000), 997, 1003, 1);
 
   DEBUG_PRINT("Ready to fly.\n");
+  Libel__ledseq_task_reset(&ledseqTaskMem);
+  int led[LED_NUM];
 
   while(1) {
     // The sensor should unlock at 1kHz
     sensorsWaitDataReady();
+    // DEBUG_PRINT("Sensor wait over\n");
+
+    Libel__ledseq_task_step(&ledseqTaskOut, &ledseqTaskMem);
+    libel_from_ledseq_task(&ledseqTaskOut, led);
+
+    // DEBUG_PRINT("tick: %d\n", tick);
+    // if (tick%100==0) set_leds(led);
 
     // update sensorData struct (for logging variables)
     sensorsAcquire(&sensorData, tick);

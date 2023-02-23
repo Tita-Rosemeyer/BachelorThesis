@@ -190,7 +190,7 @@ static xQueueHandle ledseqCmdQueue;
 static bool isInit = false;
 static bool ledseqEnabled = false;
 
-static void lesdeqCmdTask(void* param);
+// static void lesdeqCmdTask(void* param);
 
 void ledseqInit() {
   if(isInit) {
@@ -223,26 +223,26 @@ void ledseqInit() {
   ledseqMutex = xSemaphoreCreateMutex();
 
   ledseqCmdQueue = xQueueCreate(10, sizeof(struct ledseqCmd_s));
-  xTaskCreate(lesdeqCmdTask, LEDSEQCMD_TASK_NAME, LEDSEQCMD_TASK_STACKSIZE, NULL, LEDSEQCMD_TASK_PRI, NULL);
+  // xTaskCreate(lesdeqCmdTask, LEDSEQCMD_TASK_NAME, LEDSEQCMD_TASK_STACKSIZE, NULL, LEDSEQCMD_TASK_PRI, NULL);
 
   isInit = true;
 }
 
-static void lesdeqCmdTask(void* param) {
-  struct ledseqCmd_s command;
-  while(1) {
-    xQueueReceive(ledseqCmdQueue, &command, portMAX_DELAY);
+// static void lesdeqCmdTask(void* param) {
+//   struct ledseqCmd_s command;
+//   while(1) {
+//     xQueueReceive(ledseqCmdQueue, &command, portMAX_DELAY);
 
-    switch(command.command) {
-      case run:
-        ledseqRunBlocking(command.sequence);
-        break;
-      case stop:
-        ledseqStopBlocking(command.sequence);
-        break;
-    }
-  }
-}
+//     switch(command.command) {
+//       case run:
+//         ledseqRunBlocking(command.sequence);
+//         break;
+//       case stop:
+//         ledseqStopBlocking(command.sequence);
+//         break;
+//     }
+//   }
+// }
 
 bool ledseqTest(void) {
   bool status;
