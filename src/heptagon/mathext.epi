@@ -30,3 +30,5 @@ external val fun fmod(x:float; y:float) returns (z:float)
 
 external val fun invSqrt(x:float) returns (y:float)
 external val fun xTaskGetTickCount() returns (tick: int)
+
+external val fun led_set(led:int; value:bool) returns (ok: bool)

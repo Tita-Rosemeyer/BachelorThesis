@@ -118,4 +118,13 @@ void Mathext__xTaskGetTickCount_step(Mathext__xTaskGetTickCount_out* _out);
 #include <stdint.h>
 uint32_t xTaskGetTickCount( void );
 
+#include "stabilizer.h"
+#include <stdbool.h>
+
+typedef struct Mathext__led_set_out {
+  bool ok;
+} Mathext__led_set_out;
+
+void Mathext__led_set_step(int led, bool value, Mathext__led_set_out* _out);
+
 #endif // MATHEXT_H
