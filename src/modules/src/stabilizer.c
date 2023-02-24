@@ -58,6 +58,8 @@
 #include "static_mem.h"
 #include "rateSupervisor.h"
 
+#define LEDSEQ_BLINK_RATE_MS 100
+
 static bool isInit;
 static bool emergencyStop = false;
 static int emergencyStopTimeout = EMERGENCY_STOP_TIMEOUT_DISABLED;
@@ -212,17 +214,20 @@ static void checkEmergencyStopTimeout()
   }
 }
 
-void libel_from_ledseq_task(const Libel__ledseq_task_out *in, int *out)
+static void libel_from_ledseq_task(const Libel__ledseq_task_out *in, int *out)
 {
-  out = in->led_state;
+  out[0] = in->led_state.led_blue_l;
+  out[1] = in->led_state.led_green_l;
+  out[2] = in->led_state.led_red_l;
+  out[3] = in->led_state.led_green_r;
+  out[4] = in->led_state.led_red_r;
+  out[5] = in->led_state.led_blue_nrf;
 }
 
-void set_leds(int *led_state)
+static void set_leds(int *led_state)
 {
-  DEBUG_PRINT("set_leds entered\n");
   for(int i = 0; i < LED_NUM; i++) {
     ledSet(i, led_state[i]);
-    DEBUG_PRINT("led %d set to %d\n", i, led_state[i]);
   }
 }
 
@@ -259,13 +264,6 @@ static void stabilizerTask(void* param)
   while(1) {
     // The sensor should unlock at 1kHz
     sensorsWaitDataReady();
-    // DEBUG_PRINT("Sensor wait over\n");
-
-    Libel__ledseq_task_step(&ledseqTaskOut, &ledseqTaskMem);
-    libel_from_ledseq_task(&ledseqTaskOut, led);
-
-    // DEBUG_PRINT("tick: %d\n", tick);
-    // if (tick%100==0) set_leds(led);
 
     // update sensorData struct (for logging variables)
     sensorsAcquire(&sensorData, tick);
@@ -338,6 +336,13 @@ static void stabilizerTask(void* param)
 #ifdef CONFIG_MOTORS_ESC_PROTOCOL_DSHOT
     motorsBurstDshot();
 #endif
+
+    // Ledseq
+
+    Libel__ledseq_task_step(&ledseqTaskOut, &ledseqTaskMem);
+    libel_from_ledseq_task(&ledseqTaskOut, led);
+    if (tick%LEDSEQ_BLINK_RATE_MS==0) set_leds(led);
+
   }
 }
 

@@ -870,20 +870,25 @@ const err_led2      : int = led_red_r *)
 
 const led_num: int = 6
 
-(* Individual led states *)
+type led_state = {
+    led_blue_l   : bool;
+    led_green_l  : bool;
+    led_red_l    : bool;
+    led_green_r  : bool;
+    led_red_r    : bool;
+    led_blue_nrf : bool
+}
 
-node led_off ()
-returns (led_state: bool);
-let
-    automaton
-        state ON
-            do led_state = true
-            unless true then OFF
-        state OFF
-            do led_state = false
-            unless false then ON
-    end
-tel
+const null_state: led_state = {
+    led_blue_l   = false;
+    led_green_l  = false;
+    led_red_l    = false;
+    led_green_r  = false;
+    led_red_r    = false;
+    led_blue_nrf = false
+}
+
+(* Individual led states *)
 
 node led_on_every_n_tick (n: int)
 returns (led_state: bool);
@@ -900,83 +905,41 @@ let
     clock = ((last clock) + 1) % n;
 tel
 
-node led_sequence(leds: bool^led_num; n: int)
-returns (led_state: bool^led_num);
-var led0, led1, led2, led3, led4, led5: bool;
-let
-    led0 = if (leds[0]) then led_on_every_n_tick(n) else led_off();
-    led1 = if (leds[1]) then led_on_every_n_tick(n) else led_off();
-    led2 = if (leds[2]) then led_on_every_n_tick(n) else led_off();
-    led3 = if (leds[3]) then led_on_every_n_tick(n) else led_off();
-    led4 = if (leds[4]) then led_on_every_n_tick(n) else led_off();
-    led5 = if (leds[5]) then led_on_every_n_tick(n) else led_off();
-    led_state = [
-                led0,
-                led1,
-                led2,
-                led3,
-                led4,
-                led5
-            ];
-tel    
-
-(* main led sequence driver functions *)
-
-node set_leds(leds: bool^led_num)
-returns (ok: bool);
-var ok1, ok2, ok3, ok4, ok5: bool;
-let
-    ok = led_set(0, leds[0]);
-    ok1 = led_set(1, leds[1]);
-    ok2 = led_set(2, leds[2]);
-    ok3 = led_set(3, leds[3]);
-    ok4 = led_set(4, leds[4]);
-    ok5 = led_set(5, leds[5]);
-tel
-
 node led_seq_everyn(n: int)
-returns (sequence: bool^led_num;);
+returns (led_state: led_state);
 var last clock: int = 0;
-    led_on, led_off: bool;
-    ok: bool;
+    led_on: bool;
 let
     led_on = led_on_every_n_tick(n);
-    led_off = led_off();
     automaton
         state BLUE_L
-            do  sequence = [led_on, led_off, led_off, led_off, led_off, led_off];
-                ok = set_leds(sequence);
+            do led_state = {null_state with .led_blue_l = led_on};
             unless ((last clock) > 20) then GREEN_L
         state GREEN_L
-            do  sequence = [led_off, led_on, led_off, led_off, led_off, led_off];
-                ok = set_leds(sequence);
+            do led_state = {null_state with .led_green_l = led_on};
             unless ((last clock) > 40) then RED_L
         state RED_L
-            do  sequence = [led_off, led_off, led_on, led_off, led_off, led_off];
-                ok = set_leds(sequence);
+            do led_state = {null_state with .led_red_l = led_on};
             unless ((last clock) > 60) then GREEN_R
         state GREEN_R
-            do  sequence = [led_off, led_off, led_off, led_on, led_off, led_off];
-                ok = set_leds(sequence);
+            do led_state = {null_state with .led_green_r = led_on};
             unless ((last clock) > 80) then RED_R
         state RED_R
-            do  sequence = [led_off, led_off, led_off, led_off, led_on, led_off];
-                ok = set_leds(sequence);
+            do led_state = {null_state with .led_red_r = led_on};
             unless ((last clock) > 100) then BLUE_R
         state BLUE_R
-            do  sequence = [led_off, led_off, led_off, led_off, led_off, led_on];
-                ok = set_leds(sequence);
+            do led_state = {null_state with .led_blue_nrf = led_on};
             unless ((last clock) = 0) then BLUE_L
     end;
     clock = ((last clock) + 1) % 120;
 tel
 
 node ledseq_task()
-returns (last led_state: bool^led_num = false^led_num);
+returns (last led_state: led_state = null_state);
 var led_freq: bool;
 let
     led_freq = everyn<<100>>();
-    
+
     switch (led_freq)
     | true do
         led_state = led_seq_everyn(2);
