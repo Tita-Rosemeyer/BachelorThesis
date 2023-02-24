@@ -84,14 +84,3 @@ void Mathext__invSqrt_step(float x, Mathext__invSqrt_out* _out) {
 void Mathext__xTaskGetTickCount_step(Mathext__xTaskGetTickCount_out* _out) {
   _out->tick = xTaskGetTickCount();
 }
-
-
-#include "led.h"
-
-void Mathext__led_set_step(int led, bool value, Mathext__led_set_out* _out) {
-    // change led input type
-    led_t led_new = led;
-    // consolePrintf("led: %d, value: %d\n", led_new, value);
-    ledSet(led_new, value);
-    _out->ok = true;
-}
