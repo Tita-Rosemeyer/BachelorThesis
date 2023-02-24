@@ -58,6 +58,12 @@
 #include "static_mem.h"
 #include "rateSupervisor.h"
 
+#include "time.h"
+static TickType_t startTime = 0;
+static TickType_t sensorTime = 0;
+static TickType_t feedbackTime = 0;
+static TickType_t ledseqTime = 0;
+
 #define LEDSEQ_BLINK_RATE_MS 100
 
 static bool isInit;
@@ -263,7 +269,10 @@ static void stabilizerTask(void* param)
 
   while(1) {
     // The sensor should unlock at 1kHz
+
+    startTime = xTaskGetTickCount();
     sensorsWaitDataReady();
+    sensorTime = xTaskGetTickCount() - startTime;
 
     // update sensorData struct (for logging variables)
     sensorsAcquire(&sensorData, tick);
@@ -337,11 +346,14 @@ static void stabilizerTask(void* param)
     motorsBurstDshot();
 #endif
 
-    // Ledseq
+    feedbackTime = xTaskGetTickCount() - startTime - sensorTime;
 
+    // Ledseq
     Libel__ledseq_task_step(&ledseqTaskOut, &ledseqTaskMem);
     libel_from_ledseq_task(&ledseqTaskOut, led);
     if (tick%LEDSEQ_BLINK_RATE_MS==0) set_leds(led);
+
+    ledseqTime = xTaskGetTickCount() - startTime - sensorTime - feedbackTime;
 
   }
 }
@@ -381,6 +393,28 @@ PARAM_ADD_CORE(PARAM_UINT8, controller, &controllerType)
 PARAM_ADD_CORE(PARAM_UINT8, stop, &emergencyStop)
 PARAM_GROUP_STOP(stabilizer)
 
+
+/**
+ * Log group for the current stabilizer loop
+ */
+LOG_GROUP_START(timer)
+
+/**
+ * @brief Time taken to get sensor data
+ */
+LOG_ADD(LOG_UINT16, sensor, &sensorTime)
+
+/**
+ * @brief Time taken to run feedback loop in one iteration
+ */
+LOG_ADD(LOG_UINT16, feedback, &feedbackTime)
+
+/**
+ * @brief Time taken to run ledseq in one iteration
+ */
+LOG_ADD(LOG_UINT16, ledseq, &ledseqTime)
+
+LOG_GROUP_STOP(timer)
 
 /**
  * Log group for the current controller target
