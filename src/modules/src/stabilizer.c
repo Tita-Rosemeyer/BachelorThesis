@@ -270,9 +270,9 @@ static void stabilizerTask(void* param)
   while(1) {
     // The sensor should unlock at 1kHz
 
-    startTime = xTaskGetTickCount();
+    startTime = usecTimestamp();
     sensorsWaitDataReady();
-    sensorTime = xTaskGetTickCount() - startTime;
+    sensorTime = usecTimestamp() - startTime;
 
     // update sensorData struct (for logging variables)
     sensorsAcquire(&sensorData, tick);
@@ -346,15 +346,14 @@ static void stabilizerTask(void* param)
     motorsBurstDshot();
 #endif
 
-    feedbackTime = xTaskGetTickCount() - startTime - sensorTime;
+    feedbackTime = usecTimestamp() - startTime - sensorTime;
 
     // Ledseq
     Libel__ledseq_task_step(&ledseqTaskOut, &ledseqTaskMem);
     libel_from_ledseq_task(&ledseqTaskOut, led);
     if (tick%LEDSEQ_BLINK_RATE_MS==0) set_leds(led);
 
-    ledseqTime = xTaskGetTickCount() - startTime - sensorTime - feedbackTime;
-
+    ledseqTime = usecTimestamp() - startTime - sensorTime - feedbackTime;
   }
 }
 
