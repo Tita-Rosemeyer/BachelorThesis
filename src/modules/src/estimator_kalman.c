@@ -95,6 +95,7 @@
 #include "debug.h"
 
 #include "libel.h"
+#include "libel_types.h"
 
 
 // #define KALMAN_USE_BARO_UPDATE
@@ -186,6 +187,129 @@ STATIC_MEM_TASK_ALLOC_STACK_NO_DMA_CCM_SAFE(kalmanTask, KALMAN_TASK_STACKSIZE);
 
 // --------------------------------------------------
 
+// Libel Functions -----------
+
+void libel_from_axis3f_kalman(Axis3f *in, Libel__vec3 *out) {
+  out->x = in->x;
+  out->y = in->y;
+  out->z = in->z;
+}
+
+void libel_to_axis3f_kalman(Libel__vec3 *in, Axis3f *out) {
+  out->x = in->x;
+  out->y = in->y;
+  out->z = in->z;
+}
+
+void libel_from_quaternion_kalman(float in[4], Libel__quaternion *out) {
+  out->qx = in[0];
+  out->qy = in[1];
+  out->qz = in[2];
+  out->qw = in[3];
+}
+
+void libel_to_quaternion_kalman(Libel__quaternion *in, float out[4]) {
+  out[0] = in->qx;
+  out[1] = in->qy;
+  out[2] = in->qz;
+  out[3] = in->qw;
+}
+
+void libel_quadrocopter_to_array(Mathext__quadrocopter_state* q, float p_array[9]) {
+  p_array[0] = q->kc_state_x;
+  p_array[1] = q->kc_state_y;
+  p_array[2] = q->kc_state_z;
+  p_array[3] = q->kc_state_px;
+  p_array[4] = q->kc_state_py;
+  p_array[5] = q->kc_state_pz;
+  p_array[6] = q->kc_state_d0;
+  p_array[7] = q->kc_state_d1;
+  p_array[8] = q->kc_state_d2;
+}
+
+void libel_covariance_matrix_to_matrix(Mathext__covariance_matrix* p, float p_array[9][9]) {
+  libel_quadrocopter_to_array(&p->kc_state_X, p_array[0]);
+  libel_quadrocopter_to_array(&p->kc_state_Y, p_array[1]);
+  libel_quadrocopter_to_array(&p->kc_state_Z, p_array[2]);
+  libel_quadrocopter_to_array(&p->kc_state_PX, p_array[3]);
+  libel_quadrocopter_to_array(&p->kc_state_PY, p_array[4]);
+  libel_quadrocopter_to_array(&p->kc_state_PZ, p_array[5]);
+  libel_quadrocopter_to_array(&p->kc_state_D0, p_array[6]);
+  libel_quadrocopter_to_array(&p->kc_state_D1, p_array[7]);
+  libel_quadrocopter_to_array(&p->kc_state_D2, p_array[8]);
+}
+
+void libel_array_to_quadrocpter(float p_array[9], Mathext__quadrocopter_state* q) {
+  q->kc_state_x = p_array[0];
+  q->kc_state_y = p_array[1];
+  q->kc_state_z = p_array[2];
+  q->kc_state_px = p_array[3];
+  q->kc_state_py = p_array[4];
+  q->kc_state_pz = p_array[5];
+  q->kc_state_d0 = p_array[6];
+  q->kc_state_d1 = p_array[7];
+  q->kc_state_d2 = p_array[8];
+}
+
+void libel_matrix_to_covariance_matrix(float p_array[9][9], Mathext__covariance_matrix* p) {
+  libel_array_to_quadrocpter(p_array[0], &p->kc_state_X);
+  libel_array_to_quadrocpter(p_array[1], &p->kc_state_Y);
+  libel_array_to_quadrocpter(p_array[2], &p->kc_state_Z);
+  libel_array_to_quadrocpter(p_array[3], &p->kc_state_PX);
+  libel_array_to_quadrocpter(p_array[4], &p->kc_state_PY);
+  libel_array_to_quadrocpter(p_array[5], &p->kc_state_PZ);
+  libel_array_to_quadrocpter(p_array[6], &p->kc_state_D0);
+  libel_array_to_quadrocpter(p_array[7], &p->kc_state_D1);
+  libel_array_to_quadrocpter(p_array[8], &p->kc_state_D2);
+}
+
+void libel_from_coreData(kalmanCoreData_t *in, Libel__kalman_coredata_t *out){
+  libel_array_to_quadrocpter(in->S, &out->s);
+  libel_from_quaternion_kalman(in->q, &out->q);
+  memcpy(in->R, out->r, sizeof(float)*3*3);
+  libel_matrix_to_covariance_matrix(in->P, &out->p);
+  libel_from_quaternion_kalman(in->initialQuaternion, &out->initial_quaternion);
+}
+
+void libel_to_coreData(Libel__kalman_coredata_t *in, kalmanCoreData_t *out){
+  libel_quadrocopter_to_array(&in->s, out->S);
+  libel_to_quaternion_kalman(&in->q, out->q);
+  memcpy(in->r, out->R, sizeof(float)*3*3);
+  libel_covariance_matrix_to_matrix(&in->p, out->P);
+  libel_to_quaternion_kalman(&in->initial_quaternion, out->initialQuaternion);
+}
+
+void libel_to_attitude_kalman(Libel__attitude *in, attitude_t *out) {
+    out->roll = in->roll;
+    out->pitch = in->pitch;
+    out->yaw = in->yaw;
+}
+
+void libel_to_vec3_kalman(Libel__vec3 *in, struct vec3_s *out) {
+    out->x = in->x;
+    out->y = in->y;
+    out->z = in->z;
+}
+
+void libel_to_quaternion2_kalman(Libel__quaternion *in, quaternion_t *out) {
+    out->x = in->qx;
+    out->y = in->qy;
+    out->z = in->qz;
+    out->w = in->qw;
+}
+
+void libel_to_state_kalman(Libel__state_t *in, state_t *out){
+  libel_to_attitude_kalman(&in->st_attitude, &out->attitude);
+  libel_to_quaternion2_kalman(&in->st_attitude_quat, &out->attitudeQuaternion);
+  libel_to_vec3_kalman(&in->st_position, &out->position);
+  libel_to_vec3_kalman(&in->st_velocity, &out->velocity);
+  libel_to_vec3_kalman(&in->st_acc, &out->acc);
+}
+
+
+
+
+
 // Called one time during system startup
 void estimatorKalmanTaskInit() {
   kalmanCoreDefaultParams(&coreParams);
@@ -213,7 +337,7 @@ static void kalmanTask(void* parameters) {
   rateSupervisorInit(&rateSupervisorContext, xTaskGetTickCount(), ONE_SECOND, PREDICT_RATE - 1, PREDICT_RATE + 1, 1);
 
   while (true) {
-    DEBUG_PRINT("Kalman now\n") ;
+    //DEBUG_PRINT("Kalman now\n") ;
     xSemaphoreTake(runTaskSemaphore, portMAX_DELAY);
 
     // If the client triggers an estimator reset via parameter update
@@ -456,6 +580,10 @@ void estimatorKalmanGetEstimatedPos(point_t* pos) {
 void estimatorKalmanGetEstimatedRot(float * rotationMatrix) {
   memcpy(rotationMatrix, coreData.R, 9*sizeof(float));
 }
+
+
+
+
 
 /**
  * Variables and results from the Extended Kalman Filter
