@@ -1,6 +1,8 @@
 #include <math.h>
 #include "mathext_types.h"
 #include "FreeRTOS.h"
+#include <stdint.h>
+// #include "task.h"
 
 void Mathext__float_step(int x, Mathext__float_out* _out) {
   _out->y = (float)x;

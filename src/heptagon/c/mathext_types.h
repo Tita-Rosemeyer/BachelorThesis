@@ -118,4 +118,70 @@ void Mathext__xTaskGetTickCount_step(Mathext__xTaskGetTickCount_out* _out);
 #include <stdint.h>
 uint32_t xTaskGetTickCount( void );
 
+// kalman estimator
+typedef struct Mathext__arm_sqrt_out {
+  float y;
+} Mathext__arm_sqrt_out;
+
+void Mathext__arm_sqrt_step(float x, Mathext__arm_sqrt_out* _out);
+
+typedef struct Mathext__arm_cos_f32_out {
+  float y;
+} Mathext__arm_cos_f32_out;
+
+void Mathext__arm_cos_f32_step(float x, Mathext__arm_cos_f32_out* _out);
+
+typedef struct Mathext__arm_sin_f32_out {
+  float y;
+} Mathext__arm_sin_f32_out;
+
+void Mathext__arm_sin_f32_step(float x, Mathext__arm_sin_f32_out* _out);
+
+typedef struct Mathext__quadrocopter_state {
+    float kc_state_x;
+    float kc_state_y;
+    float kc_state_z;
+    float kc_state_px;
+    float kc_state_py;
+    float kc_state_pz;
+    float kc_state_d0;
+    float kc_state_d1;
+    float kc_state_d2;
+} Mathext__quadrocopter_state;
+
+typedef struct Mathext__covariance_matrix {
+    Mathext__quadrocopter_state kc_state_X;
+    Mathext__quadrocopter_state kc_state_Y;
+    Mathext__quadrocopter_state kc_state_Z;
+    Mathext__quadrocopter_state kc_state_PX;
+    Mathext__quadrocopter_state kc_state_PY;
+    Mathext__quadrocopter_state kc_state_PZ;
+    Mathext__quadrocopter_state kc_state_D0;
+    Mathext__quadrocopter_state kc_state_D1;
+    Mathext__quadrocopter_state kc_state_D2;
+} Mathext__covariance_matrix;
+
+typedef struct Mathext__covariance_update_out {
+  Mathext__covariance_matrix p;
+} Mathext__covariance_update_out;
+
+void quadrocpter_to_array(Mathext__quadrocopter_state* q, float p_array[9]);
+void array_to_quadrocpter(float p_array[9], Mathext__quadrocopter_state* q);
+void covariance_matrix_to_matrix(Mathext__covariance_matrix* p, float p_array[9][9]);
+void matrix_to_covariance_matrix(float p_array[9][9], Mathext__covariance_matrix* p);
+
+void Mathext__covariance_update_step(Mathext__covariance_matrix am, Mathext__covariance_matrix p, Mathext__covariance_update_out* _out);
+
+typedef struct Mathext__enforce_covariance_matrix_symmetry_out {
+  Mathext__covariance_matrix p;
+} Mathext__enforce_covariance_matrix_symmetry_out;
+
+void Mathext__enforce_covariance_matrix_symmetry_step(Mathext__covariance_matrix p, Mathext__enforce_covariance_matrix_symmetry_out* _out);
+
+typedef struct Mathext__supervisor_is_flying_out {
+  int ok;
+} Mathext__supervisor_is_flying_out;
+
+void Mathext__supervisor_is_flying_step(Mathext__supervisor_is_flying_out* _out);
+
 #endif // MATHEXT_H

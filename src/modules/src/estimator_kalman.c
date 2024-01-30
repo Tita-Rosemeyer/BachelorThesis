@@ -94,6 +94,8 @@
 #define DEBUG_MODULE "ESTKALMAN"
 #include "debug.h"
 
+#include "libel.h"
+
 
 // #define KALMAN_USE_BARO_UPDATE
 
@@ -211,6 +213,7 @@ static void kalmanTask(void* parameters) {
   rateSupervisorInit(&rateSupervisorContext, xTaskGetTickCount(), ONE_SECOND, PREDICT_RATE - 1, PREDICT_RATE + 1, 1);
 
   while (true) {
+    DEBUG_PRINT("Kalman now\n") ;
     xSemaphoreTake(runTaskSemaphore, portMAX_DELAY);
 
     // If the client triggers an estimator reset via parameter update

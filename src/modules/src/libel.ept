@@ -846,6 +846,633 @@ let
             st_acc = {x = 0.0; y = 0.0; z = st_acc_z}};
 tel
 
+(* ---------------------------------------------------------------------------------------- *)
+(* Kalman Estimator *)
+
+(* data types and constants *)
+
+const max_position: float = 100.0
+const max_velocity: float = 10.0
+const max_covariance: float = 100.0
+const min_covariance: float = 0.000001
+
+const predict_rate: int = 100
+const deg_ro_rad: float = pi_f /. 180.0
+const rad_to_deg: float = 180.0 /. pi_f
+const gravity_magnitude: float = 9.81
+const eps: float = 0.000001
+const rollpitch_zero_reversion: float = 0.001
+
+type outlier_filter_lh_state_t = {
+    openingTime: int;
+    openingWindow: int
+}
+
+(* const kc_state_x: int = 0
+const kc_state_y: int = 1
+const kc_state_z: int = 2
+const kc_state_px: int = 3
+const kc_state_py: int = 4
+const kc_state_pz: int = 5
+const kc_state_d0: int = 6
+const kc_state_d1: int = 7
+const kc_state_d2: int = 8
+const kc_state_dim: int = 9
+
+type Mathext.quadrocopter_state = {
+    kc_state_x: float;
+    kc_state_y: float;
+    kc_state_z: float;
+    kc_state_px: float;
+    kc_state_py: float;
+    kc_state_pz: float;
+    kc_state_d0: float;
+    kc_state_d1: float;
+    kc_state_d2: float
+}
+
+type Mathext.covariance_matrix = {
+    kc_state_X: Mathext.quadrocopter_state;
+    kc_state_Y: Mathext.quadrocopter_state;
+    kc_state_Z: Mathext.quadrocopter_state;
+    kc_state_PX: Mathext.quadrocopter_state;
+    kc_state_PY: Mathext.quadrocopter_state;
+    kc_state_PZ: Mathext.quadrocopter_state;
+    kc_state_D0: Mathext.quadrocopter_state;
+    kc_state_D1: Mathext.quadrocopter_state;
+    kc_state_D2: Mathext.quadrocopter_state
+} *)
+
+(* type arm_matrix_instance_f32 = {
+    num_rows: int;
+    num_cols: int;
+    matrix: Mathext.covariance_matrix
+} *)
+
+type kalman_coredata_t = {
+    s: Mathext.quadrocopter_state;
+    q: quaternion;
+    r: float^3^3;
+    p: Mathext.covariance_matrix;
+    initial_quaternion: quaternion
+}
+
+type kalman_core_params = {
+    std_dev_initial_position_xy: float;
+    std_dev_initial_position_z: float;
+    std_dev_initial_velocity: float;
+    std_dev_initial_attitude_rollpitch: float;
+    std_dev_initial_attitude_yaw: float;
+
+    proc_noise_acc_xy: float;
+    proc_noise_acc_z: float;
+    proc_noise_vel: float;
+    proc_noise_pos: float;
+    proc_noise_att: float;
+    proc_noise_baro: float;
+    proc_noise_gyro_rollpitch: float;
+    proc_noise_gyro_yaw: float;
+
+    initial_x: float;
+    initial_y: float;
+    initial_z: float;
+    initial_yaw: float
+}
+
+const params: kalman_core_params = {
+    std_dev_initial_position_xy = 100.0;
+    std_dev_initial_position_z = 1.0;
+    std_dev_initial_velocity = 0.01;
+    std_dev_initial_attitude_rollpitch = 0.01;
+    std_dev_initial_attitude_yaw = 0.01;
+
+    proc_noise_acc_xy = 0.5;
+    proc_noise_acc_z = 1.0;
+    proc_noise_vel = 0.0;
+    proc_noise_pos = 0.0;
+    proc_noise_att = 0.0;
+    proc_noise_baro = 2.0;
+    proc_noise_gyro_rollpitch = 0.1;
+    proc_noise_gyro_yaw = 0.1;
+
+    initial_x = 0.0;
+    initial_y = 0.0;
+    initial_z = 0.0;
+    initial_yaw = 0.0
+}
+
+const null_matrix: Mathext.covariance_matrix = {
+    kc_state_X = {kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0 };
+    kc_state_Y = {kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0 };
+    kc_state_Z = {kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0 };
+    kc_state_PX = {kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0 };
+    kc_state_PY = {kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0 };
+    kc_state_PZ = {kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0 };
+    kc_state_D0 = {kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0 };
+    kc_state_D1 = {kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0 };
+    kc_state_D2 = {kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0 }
+}
+
+const null_quadrocopter_state: Mathext.quadrocopter_state = {
+    kc_state_x = 0.0;
+    kc_state_y = 0.0;
+    kc_state_z = 0.0;
+    kc_state_px = 0.0;
+    kc_state_py = 0.0;
+    kc_state_pz = 0.0;
+    kc_state_d0 = 0.0;
+    kc_state_d1 = 0.0;
+    kc_state_d2 = 0.0
+}
+
+const init_vec3: vec3 = {x = 0.0; y = 0.0; z = 0.0}
+
+const init_core_data: kalman_coredata_t = {
+    s = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
+    q = { qx = 0.0; qy = 0.0; qz = 0.0; qw = 1.0};
+    r = [ [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    p = { 
+        kc_state_X = { kc_state_x = 10000.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
+        kc_state_Y = { kc_state_x = 0.0; kc_state_y = 10000.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
+        kc_state_Z = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 1.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
+        kc_state_PX = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.00001; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
+        kc_state_PY = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.00001; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
+        kc_state_PZ = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.00001; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
+        kc_state_D0 = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.00001; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
+        kc_state_D1 = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.00001; kc_state_d2 = 0.0};
+        kc_state_D2 = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.00001}
+    };
+    initial_quaternion = { qx = 0.0; qy = 0.0; qz = 0.0; qw = 1.0}
+}
+
+(* secondary functions *)
+
+node attitude_err_from_attitude_err(d0, d1, d2: float)
+returns (d0_q, d1_q, d2_q: Mathext.quadrocopter_state);
+let
+    d0_q = {  kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; 
+            kc_state_d0 = (1.0 -. ((d1*.d1)/.2.0) -. ((d2*.d2)/.2.0));
+            kc_state_d1 = (d2 +. ((d0*.d1)/.2.0));
+            kc_state_d2 = (-.d1 +. ((d0*.d2)/.2.0))};
+
+    d1_q = {  kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0;
+            kc_state_d0 = (-.d2 +. ((d0*.d1)/.2.0));
+            kc_state_d1 = (1.0 -. ((d0*.d0)/.2.0) -. ((d2*.d2)/.2.0));
+            kc_state_d2 = (d0 +. ((d1*.d2)/.2.0))};
+
+    d2_q = {  kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0;
+            kc_state_d0 = (d1 +. ((d0*.d2)/.2.0));
+            kc_state_d1 = (-.d0 +. ((d1*.d2)/.2.0));
+            kc_state_d2 = (1.0 -. ((d0*.d0)/.2.0) -. ((d1*.d1)/.2.0))};
+tel
+
+node linearize(r: float^3^3; s: Mathext.quadrocopter_state; gyro: vec3; dt: float)
+returns (am: Mathext.covariance_matrix);
+var d0, d1, d2: float;
+    d0_q, d1_q, d2_q: Mathext.quadrocopter_state;
+let
+    d0 = (gyro.x*.dt)/.2.0;
+    d1 = (gyro.y*.dt)/.2.0;
+    d2 = (gyro.z*.dt)/.2.0;
+
+    (d0_q, d1_q, d2_q) = attitude_err_from_attitude_err(d0, d1, d2);
+
+    am = {
+        kc_state_X = { kc_state_x = 1.0; kc_state_y = 0.0; kc_state_z = 0.0;
+                    kc_state_px = r[0][0] *. dt; 
+                    kc_state_py = r[0][1] *. dt;
+                    kc_state_pz = r[0][2] *. dt;
+                    kc_state_d0 = (s.kc_state_py*.r[0][2] -. s.kc_state_pz*.r[0][1]) *. dt;
+                    kc_state_d1 = (s.kc_state_px*.r[0][2] +. s.kc_state_pz*.r[0][0]) *. dt;
+                    kc_state_d2 = (s.kc_state_px*.r[0][1] -. s.kc_state_py*.r[0][0]) *. dt};
+
+        kc_state_Y = { kc_state_x = 0.0; kc_state_y = 1.0; kc_state_z = 0.0;
+                    kc_state_px = r[1][0] *. dt; 
+                    kc_state_py = r[1][1] *. dt;
+                    kc_state_pz = r[1][2] *. dt;
+                    kc_state_d0 = (s.kc_state_py*.r[1][2] -. s.kc_state_pz*.r[1][1]) *. dt;
+                    kc_state_d1 = (s.kc_state_px*.r[1][2] +. s.kc_state_pz*.r[1][0]) *. dt;
+                    kc_state_d2 = (s.kc_state_px*.r[1][1] -. s.kc_state_py*.r[1][0]) *. dt};
+
+        kc_state_Z = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 1.0;
+                    kc_state_px = r[2][0] *. dt; 
+                    kc_state_py = r[2][1] *. dt;
+                    kc_state_pz = r[2][2] *. dt;
+                    kc_state_d0 = (s.kc_state_py*.r[2][2] -. s.kc_state_pz*.r[2][1]) *. dt;
+                    kc_state_d1 = (s.kc_state_px*.r[2][2] +. s.kc_state_pz*.r[2][0]) *. dt;
+                    kc_state_d2 = (s.kc_state_px*.r[2][1] -. s.kc_state_py*.r[2][0]) *. dt};
+
+        kc_state_PX = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0;
+                    kc_state_px = 1.0; 
+                    kc_state_py = gyro.z*.dt;
+                    kc_state_pz = -.gyro.y*.dt;
+                    kc_state_d0 = 0.0;
+                    kc_state_d1 = gravity_magnitude*.r[2][2]*.dt;
+                    kc_state_d2 = -.gravity_magnitude*.r[2][1]*.dt};
+
+        kc_state_PY = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0;
+                    kc_state_px = -.gyro.z*.dt; 
+                    kc_state_py = 1.0;
+                    kc_state_pz = gyro.x*.dt;
+                    kc_state_d0 = -.gravity_magnitude*.r[2][2]*.dt;
+                    kc_state_d1 = 0.0;
+                    kc_state_d2 = gravity_magnitude*.r[2][0]*.dt};
+
+        kc_state_PZ = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0;
+                    kc_state_px = gyro.y*.dt; 
+                    kc_state_py = -.gyro.x*.dt;
+                    kc_state_pz = 1.0;
+                    kc_state_d0 = gravity_magnitude*.r[2][1]*.dt;
+                    kc_state_d1 = -.gravity_magnitude*.r[2][0]*.dt;
+                    kc_state_d2 = 0.0};
+
+        kc_state_D0 = d0_q;
+        kc_state_D1 = d1_q;
+        kc_state_D2 = d2_q
+    }
+tel
+
+node prediction_step(s: Mathext.quadrocopter_state; r: float^3^3; 
+                    q, initial_q: quaternion; 
+                    quad_is_flying: bool;
+                    acc, gyro: vec3; dt: float)
+returns (s_updated: Mathext.quadrocopter_state; q_updated: quaternion);
+var dt2, norm: float;
+    dx, dy, dz: float;
+    tmpSPX, tmpSPY, tmpSPZ: float;
+    dtwx, dtwy, dtwz: float;
+    angle, ca, sa: float;
+    dq: float^4;
+    tmpq0, tmpq1, tmpq2, tmpq3: float;
+    last keep: float = 0.0;
+    last tmpq0_1: float = 0.0;
+    last tmpq1_1: float = 0.0;
+    last tmpq2_1: float = 0.0;
+    last tmpq3_1: float = 0.0;
+let
+    dt2 = dt *. dt;
+    tmpSPX = s.kc_state_px;
+    tmpSPY = s.kc_state_py;
+    tmpSPZ = s.kc_state_pz;
+
+    switch quad_is_flying
+    | true do
+        dx = s.kc_state_px *. dt;
+        dy = s.kc_state_py *. dt;
+        dz = (s.kc_state_pz *. dt) +. (acc.z *. dt2 /. 2.0);
+
+        s_updated = {
+            kc_state_x = s.kc_state_x +. (r[0][0] *. dx) +. (r[0][1] *. dy) +. (r[0][2] *. dz);
+            kc_state_y = s.kc_state_y +. (r[1][0] *. dx) +. (r[1][1] *. dy) +. (r[1][2] *. dz);
+            kc_state_z = s.kc_state_z +. (r[2][0] *. dx) +. (r[2][1] *. dy) +. (r[2][2] *. dz) -. (gravity_magnitude *. dt2 /. 2.0);
+            kc_state_px = s.kc_state_px +. dt*.(gyro.z *. tmpSPY -. gyro.y *. tmpSPZ -. gravity_magnitude *. r[2][0]);
+            kc_state_py = s.kc_state_py +. dt*.(-.gyro.z *. tmpSPX +. gyro.x *. tmpSPZ -. gravity_magnitude *. r[2][1]);
+            kc_state_pz = s.kc_state_pz +. dt*.(acc.z +. gyro.y *. tmpSPX -. gyro.x *. tmpSPY -. gravity_magnitude *. r[2][2]);
+            kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0
+        };
+    | false do
+        dx = s.kc_state_px *. dt +. (acc.x *. dt2 /. 2.0);
+        dy = s.kc_state_py *. dt +. (acc.y *. dt2 /. 2.0);
+        dz = s.kc_state_pz *. dt +. (acc.z *. dt2 /. 2.0);
+
+        s_updated = {
+            kc_state_x = s.kc_state_x +. (r[0][0] *. dx) +. (r[0][1] *. dy) +. (r[0][2] *. dz);
+            kc_state_y = s.kc_state_y +. (r[1][0] *. dx) +. (r[1][1] *. dy) +. (r[1][2] *. dz);
+            kc_state_z = s.kc_state_z +. (r[2][0] *. dx) +. (r[2][1] *. dy) +. (r[2][2] *. dz) -. (gravity_magnitude *. dt2 /. 2.0);
+            kc_state_px = s.kc_state_px +. dt*.(acc.x +. (gyro.z *. tmpSPY) -. (gyro.y *. tmpSPZ) -. (gravity_magnitude *. r[2][0]));
+            kc_state_py = s.kc_state_py +. dt*.(acc.y -. (gyro.z *. tmpSPX) +. (gyro.x *. tmpSPZ) -. (gravity_magnitude *. r[2][1]));
+            kc_state_pz = s.kc_state_pz +. dt*.(acc.z +. (gyro.y *. tmpSPX) -. (gyro.x *. tmpSPY) -. (gravity_magnitude *. r[2][2]));
+            kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0
+        };
+    end;
+
+    dtwx = dt *. gyro.x;
+    dtwy = dt *. gyro.y;
+    dtwz = dt *. gyro.z;
+
+    angle = sqrt(dtwx *. dtwx +. dtwy *. dtwy +. dtwz *. dtwz) +. eps;
+    ca = arm_cos_f32(angle /. 2.0);
+    sa = arm_sin_f32(angle /. 2.0);
+    dq = [ca, (sa *. dtwx)/.angle, (sa *. dtwy)/.angle, (sa *. dtwz)/.angle];
+
+    tmpq0 = dq[0]*.q.qw -. dq[1]*.q.qx -. dq[2]*.q.qy -. dq[3]*.q.qz;
+    tmpq1 = dq[1]*.q.qw +. dq[0]*.q.qx +. dq[3]*.q.qy -. dq[2]*.q.qz;
+    tmpq2 = dq[2]*.q.qw -. dq[3]*.q.qx +. dq[0]*.q.qy +. dq[1]*.q.qz;
+    tmpq3 = dq[3]*.q.qw +. dq[2]*.q.qx -. dq[1]*.q.qy +. dq[0]*.q.qz;
+
+    switch not quad_is_flying
+    | true do
+        keep = 1.0 -. rollpitch_zero_reversion;
+        tmpq0_1 = keep*.tmpq0 +. rollpitch_zero_reversion*.initial_q.qw;
+        tmpq1_1 = keep*.tmpq1 +. rollpitch_zero_reversion*.initial_q.qx;
+        tmpq2_1 = keep*.tmpq2 +. rollpitch_zero_reversion*.initial_q.qy;
+        tmpq3_1 = keep*.tmpq3 +. rollpitch_zero_reversion*.initial_q.qz;
+        norm = arm_sqrt(tmpq0_1*.tmpq0_1 +. tmpq1_1*.tmpq1_1 +. tmpq2_1*.tmpq2_1 +. tmpq3_1*.tmpq3_1);
+        q_updated = {qx = tmpq0_1 /. norm; qy = tmpq1_1 /. norm; qz = tmpq2_1 /. norm; qw = tmpq3_1 /. norm};
+    | false do
+        norm = arm_sqrt(tmpq0*.tmpq0 +. tmpq1*.tmpq1 +. tmpq2*.tmpq2 +. tmpq3*.tmpq3);
+        q_updated = {qx = tmpq0 /. norm; qy = tmpq1 /. norm; qz = tmpq2 /. norm; qw = tmpq3 /. norm};
+    end;
+tel
+
+
+node kalman_core_predict(this: kalman_coredata_t; acc: vec3; gyro: vec3; dt: float; quad_is_flying: bool)
+returns (this_updated: kalman_coredata_t);
+var am, am_temp: Mathext.covariance_matrix;
+    s_updated: Mathext.quadrocopter_state;
+    q_updated: quaternion;
+let
+    am_temp = linearize(this.r, this.s, gyro, dt);
+    am = covariance_update(am_temp, this.p);
+    (s_updated, q_updated) = prediction_step(this.s, this.r, this.q, this.initial_quaternion, quad_is_flying, acc, gyro, dt);
+    this_updated = {s = s_updated;
+                    q = q_updated;
+                    r = this.r;
+                    p = am;
+                    initial_quaternion = this.initial_quaternion};
+tel
+
+node predict_state_forward( core_data: kalman_coredata_t;
+                            gyro_accumulator_count, acc_accumulator_count: float;
+                            gyro_accumulator, acc_accumulator: vec3;)
+returns (core_data_updated: kalman_coredata_t;
+        gyro_acc_count_updated, acc_acc_count_updated: float;
+        gyro_accumulator_updated, acc_accumulator_updated: vec3);
+var last gyro_average: vec3 = {x = 0.0; y = 0.0; z = 0.0};
+    last acc_average: vec3 = {x = 0.0; y = 0.0; z = 0.0};
+    dt: float;
+    last quad_is_flying: bool = false;
+let
+    dt = rate_100_hz;
+    switch (gyro_accumulator_count = 0.0 or acc_accumulator_count = 0.0)
+    | true do
+        gyro_accumulator_updated = gyro_accumulator;
+        acc_accumulator_updated = acc_accumulator;
+        gyro_acc_count_updated = 0.0;
+        acc_acc_count_updated = 0.0;
+        core_data_updated = core_data;
+    | false do
+        gyro_average = {x = gyro_accumulator.x *. deg_ro_rad /. gyro_accumulator_count;
+                        y = gyro_accumulator.y *. deg_ro_rad /. gyro_accumulator_count;
+                        z = gyro_accumulator.z *. deg_ro_rad /. gyro_accumulator_count};
+
+        acc_average = { x = acc_accumulator.x *. gravity_magnitude /. acc_accumulator_count;
+                        y = acc_accumulator.y *. gravity_magnitude /. acc_accumulator_count;
+                        z = acc_accumulator.z *. gravity_magnitude /. acc_accumulator_count};
+
+        gyro_acc_count_updated = 0.0;
+        acc_acc_count_updated = 0.0;
+        gyro_accumulator_updated = init_vec3;
+        acc_accumulator_updated = init_vec3;
+        quad_is_flying = supervisor_is_flying();
+        (* quad_is_flying = false; *)
+        core_data_updated = kalman_core_predict(core_data, acc_average, gyro_average, dt, quad_is_flying);
+    end;
+tel
+
+node kalman_core_add_process_noise(core_data: kalman_coredata_t)
+returns (core_data_final: kalman_coredata_t);
+var dt: float;
+    core_data_updated: kalman_coredata_t;
+let
+    dt = rate_1000_hz;
+    core_data_updated = { core_data with
+        .p = {
+            kc_state_X = { core_data.p.kc_state_X with .kc_state_x = core_data.p.kc_state_X.kc_state_x +. power((params.proc_noise_acc_xy*.dt*.dt +. params.proc_noise_vel*.dt +. params.proc_noise_pos), 2.0)};
+            kc_state_Y = { core_data.p.kc_state_Y with .kc_state_y = core_data.p.kc_state_Y.kc_state_y +. power((params.proc_noise_acc_xy*.dt*.dt +. params.proc_noise_vel*.dt +. params.proc_noise_pos), 2.0)};
+            kc_state_Z = { core_data.p.kc_state_Z with .kc_state_z = core_data.p.kc_state_Z.kc_state_z +. power((params.proc_noise_acc_z*.dt*.dt +. params.proc_noise_vel*.dt +. params.proc_noise_pos), 2.0)};
+            kc_state_PX = { core_data.p.kc_state_PX with .kc_state_px = core_data.p.kc_state_PX.kc_state_px +. power((params.proc_noise_acc_xy*.dt +. params.proc_noise_vel), 2.0)};
+            kc_state_PY = { core_data.p.kc_state_PX with .kc_state_py = core_data.p.kc_state_PY.kc_state_py +. power((params.proc_noise_acc_xy*.dt +. params.proc_noise_vel), 2.0)};
+            kc_state_PZ = { core_data.p.kc_state_PX with .kc_state_pz = core_data.p.kc_state_PZ.kc_state_pz +. power((params.proc_noise_acc_z*.dt +. params.proc_noise_vel), 2.0)};
+            kc_state_D0 = { core_data.p.kc_state_D0 with .kc_state_d0 = core_data.p.kc_state_D0.kc_state_d0 +. power((params.proc_noise_gyro_rollpitch*.dt +. params.proc_noise_att), 2.0)};
+            kc_state_D1 = { core_data.p.kc_state_D1 with .kc_state_d1 = core_data.p.kc_state_D1.kc_state_d1 +. power((params.proc_noise_gyro_rollpitch*.dt +. params.proc_noise_att), 2.0)};
+            kc_state_D2 = { core_data.p.kc_state_D2 with .kc_state_d2 = core_data.p.kc_state_D2.kc_state_d2 +. power((params.proc_noise_gyro_yaw*.dt +. params.proc_noise_att), 2.0)}
+        }
+    };
+    core_data_final = {core_data_updated with .p = enforce_covariance_matrix_symmetry(core_data_updated.p)};
+tel
+
+node move_attitude_error_to_attitude(q: quaternion;
+                                    kc_state_d0, kc_state_d1, kc_state_d2: float;
+                                    p: Mathext.covariance_matrix)
+returns (q_updated: quaternion; p_updated: Mathext.covariance_matrix);
+var last am: Mathext.covariance_matrix = null_matrix;
+    v0, v1, v2: float;
+    last angle: float = 0.0;
+    last ca: float = 0.0;
+    last sa: float = 0.0;
+    last dq: float^4 = [0.0, 0.0, 0.0, 0.0];
+    last tmpq0: float = 0.0;
+    last tmpq1: float = 0.0;
+    last tmpq2: float = 0.0;
+    last tmpq3: float = 0.0;
+    last norm: float = 0.0;
+    last d0: float = 0.0;
+    last d1: float = 0.0;
+    last d2: float = 0.0;
+    last d0_q: Mathext.quadrocopter_state = null_quadrocopter_state;
+    last d1_q: Mathext.quadrocopter_state = null_quadrocopter_state;
+    last d2_q: Mathext.quadrocopter_state = null_quadrocopter_state;
+let
+    v0 = kc_state_d0;
+    v1 = kc_state_d1;
+    v2 = kc_state_d2;
+
+    switch  ((fabs(v0) >. 0.0001) or (fabs(v1) >. 0.0001) or (fabs(v2) >. 0.0001)) and
+            ((fabs(v0) <. 10.0) and (fabs(v1) <. 10.0) and (fabs(v2) <. 10.0))
+    | true do
+        angle = arm_sqrt(v0*.v0 +. v1*.v1 +. v2*.v2) +. eps;
+        ca = arm_cos_f32(angle /. 2.0);
+        sa = arm_sin_f32(angle /. 2.0);
+        dq = [ca, sa*.v0/.angle, sa*.v1/.angle, sa*.v2/.angle];
+
+        tmpq0 = dq[0] *. q.qw -. dq[1] *. q.qx -. dq[2] *. q.qy -. dq[3] *. q.qz;
+        tmpq1 = dq[1] *. q.qw +. dq[0] *. q.qx +. dq[3] *. q.qy -. dq[2] *. q.qz;
+        tmpq2 = dq[2] *. q.qw -. dq[3] *. q.qx +. dq[0] *. q.qy +. dq[1] *. q.qz;
+        tmpq3 = dq[3] *. q.qw +. dq[2] *. q.qx -. dq[1] *. q.qy +. dq[0] *. q.qz;
+
+        norm = arm_sqrt(tmpq0*.tmpq0 +. tmpq1*.tmpq1 +. tmpq2*.tmpq2 +. tmpq3*.tmpq3) +. eps;
+        q_updated = {qw = tmpq0/.norm; qx = tmpq1/.norm; qy = tmpq2/.norm; qz = tmpq3/.norm};
+
+        d0 = v0/.2.0;
+        d1 = v1/.2.0;
+        d2 = v2/.2.0;
+
+        (d0_q, d1_q, d2_q) = attitude_err_from_attitude_err(d0, d1, d2);
+
+        am = {
+            kc_state_X = {null_quadrocopter_state with .kc_state_x = 1.0};
+            kc_state_Y = {null_quadrocopter_state with .kc_state_y = 1.0};
+            kc_state_Z = {null_quadrocopter_state with .kc_state_z = 1.0};
+            kc_state_PX = {null_quadrocopter_state with .kc_state_px = 1.0};
+            kc_state_PY = {null_quadrocopter_state with .kc_state_py = 1.0};
+            kc_state_PZ = {null_quadrocopter_state with .kc_state_pz = 1.0};
+            kc_state_D0 = d0_q;
+            kc_state_D1 = d1_q;
+            kc_state_D2 = d2_q
+        };
+
+        p_updated = covariance_update(am, p);
+
+    | false do
+        q_updated = q;
+        p_updated = p;
+    end;
+tel
+
+node convert_attitude_to_rotation_matrix(q: quaternion)
+returns (r: float^3^3);
+let
+    r =[[ q.qw*.q.qw +. q.qx*.q.qx -. q.qy*.q.qy -. q.qz*.q.qz,
+          2.0*.q.qx*.q.qy -. 2.0*.q.qw*.q.qz,
+          2.0*.q.qx*.q.qz +. 2.0*.q.qw*.q.qy],
+
+        [ 2.0*.q.qx*.q.qy +. 2.0*.q.qw*.q.qz,
+          q.qw*.q.qw -. q.qx*.q.qx +. q.qy*.q.qy -. q.qz*.q.qz,
+          2.0*.q.qy*.q.qz -. 2.0*.q.qw*.q.qx],
+
+        [ 2.0*.q.qx*.q.qz -. 2.0*.q.qw*.q.qy,
+          2.0*.q.qy*.q.qz +. 2.0*.q.qw*.q.qx,
+          q.qw*.q.qw -. q.qx*.q.qx -. q.qy*.q.qy +. q.qz*.q.qz]
+    ];
+tel
+
+node kalman_core_finalize(this: kalman_coredata_t)
+returns (this_final: kalman_coredata_t);
+var q_updated: quaternion;
+    p_updated: Mathext.covariance_matrix;
+    r_updated: float^3^3;
+    s_updated: Mathext.quadrocopter_state;
+    p_final: Mathext.covariance_matrix;
+let
+    (q_updated, p_updated) = move_attitude_error_to_attitude(this.q, this.s.kc_state_d0, this.s.kc_state_d1, this.s.kc_state_d2, this.p);
+    r_updated = convert_attitude_to_rotation_matrix(q_updated);
+    s_updated = {this.s with .kc_state_d0 = 0.0
+                            (* .kc_state_d1 = 0.0;
+                            .kc_state_d2 = 0.0 *)
+                            };
+    p_final = enforce_covariance_matrix_symmetry(p_updated);
+    this_final = {this with .q = q_updated
+                           (* .r = r_updated;
+                           .s = s_updated;
+                           .p = p_final *)
+                           };
+tel
+
+node kalman_supervisor_is_state_within_bounds(this: kalman_coredata_t)
+returns (ok: bool);
+let
+    ok = if (this.s.kc_state_x >. max_position or this.s.kc_state_x <. -.max_position or
+            this.s.kc_state_y >. max_position or this.s.kc_state_y <. -.max_position or
+            this.s.kc_state_z >. max_position or this.s.kc_state_z <. -.max_position or
+            this.s.kc_state_px >. max_velocity or this.s.kc_state_px <. -.max_velocity or
+            this.s.kc_state_py >. max_velocity or this.s.kc_state_py <. -.max_velocity or
+            this.s.kc_state_pz >. max_velocity or this.s.kc_state_pz <. -.max_velocity)
+        then true
+        else false;
+tel
+
+node kalman_core_externalize_state(this: kalman_coredata_t; acc: vec3)
+returns (st: state_t);
+var roll, pitch, yaw: float;
+let
+    yaw = atan2(2.0*.(this.q.qx*.this.q.qy +. this.q.qw*.this.q.qz), this.q.qw*.this.q.qw +. this.q.qx*.this.q.qx -. this.q.qy*.this.q.qy -. this.q.qz*.this.q.qz);
+    pitch = asin(-.2.0*.(this.q.qx*.this.q.qz -. this.q.qw*.this.q.qy));
+    roll = atan2(2.0*.(this.q.qy*.this.q.qz +. this.q.qw*.this.q.qx), this.q.qw*.this.q.qw -. this.q.qx*.this.q.qx -. this.q.qy*.this.q.qy +. this.q.qz*.this.q.qz);
+
+    st = {
+        st_position = { x = this.s.kc_state_x; 
+                        y = this.s.kc_state_y; 
+                        z = this.s.kc_state_z};
+
+        st_velocity = {x = this.r[0][0] *. this.s.kc_state_px +. this.r[0][1] *. this.s.kc_state_py +. this.r[0][2] *. this.s.kc_state_pz;
+                       y = this.r[1][0] *. this.s.kc_state_px +. this.r[1][1] *. this.s.kc_state_py +. this.r[1][2] *. this.s.kc_state_pz;
+                       z = this.r[2][0] *. this.s.kc_state_px +. this.r[2][1] *. this.s.kc_state_py +. this.r[2][2] *. this.s.kc_state_pz};
+
+        st_acc = {  x = this.r[0][0]*.acc.x +. this.r[0][1]*.acc.y +. this.r[0][2]*.acc.z;
+                    y = this.r[1][0]*.acc.x +. this.r[1][1]*.acc.y +. this.r[1][2]*.acc.z;
+                    z = this.r[2][0]*.acc.x +. this.r[2][1]*.acc.y +. this.r[2][2]*.acc.z};
+
+        st_attitude = { roll = roll*.rad_to_deg;
+                        pitch = -.(pitch*.rad_to_deg);
+                        yaw = yaw*.rad_to_deg};
+
+        st_attitude_quat = { qx = this.q.qx;
+                             qy = this.q.qy;
+                             qz = this.q.qz;
+                             qw = this.q.qw}
+    };
+tel
+
+(* main kalman task *)
+
+node kalman_task(core_data: kalman_coredata_t;
+                gyro_acc_count, acc_acc_count: float;
+                gyro_accumulator, acc_accumulator: vec3;
+                done_update: bool;
+                acc_latest: vec3)
+returns (st : state_t; core_data_3: kalman_coredata_t;
+        gyro_acc_count_updated, acc_acc_count_updated: float;
+        gyro_accumulator_updated, acc_accumulator_updated: vec3);
+var 
+    prediction_freq: bool;
+    (* core_data_0, core_data_1, *) core_data_2: kalman_coredata_t;
+    (* last gyro_accumulator_temp: vec3 = {x = 0.0; y = 0.0; z = 0.0};
+    last acc_accumulator_temp: vec3 = {x = 0.0; y = 0.0; z = 0.0};
+    last gyro_acc_count_temp: float = 0.0;
+    last acc_acc_count_temp: float = 0.0; *)
+    (* last reset_estimation: bool = false; *)
+let
+    prediction_freq = everyn<<10>>();
+
+    (* switch prediction_freq
+    | true do
+        core_data_0 = core_data;
+        (core_data_0, acc_acc_count_temp, gyro_acc_count_temp, gyro_accumulator_temp, acc_accumulator_temp) = predict_state_forward(core_data, gyro_acc_count, acc_acc_count, gyro_accumulator, acc_accumulator);
+    | false do
+        core_data_0 = core_data;
+    end; *)
+
+    (* core_data_1 = kalman_core_add_process_noise(core_data); *)
+    (* core_data_1 = core_data; *)
+    
+    (* core_data_2 = core_data; *)
+    switch done_update
+    | true do
+        core_data_2 = core_data;
+        (* reset_estimation = false; *)
+        (* core_data_2 = kalman_core_finalize(core_data); *)
+        (* reset_estimation = not kalman_supervisor_is_state_within_bounds(core_data_2); *)
+    | false do
+        core_data_2 = core_data;
+    end;
+
+    st = kalman_core_externalize_state(core_data_2, acc_latest);
+
+    (* switch not (reset_estimation)
+    | true do
+        acc_accumulator_updated = init_vec3;
+        gyro_accumulator_updated = init_vec3;
+        acc_acc_count_updated = 0.0;
+        gyro_acc_count_updated = 0.0;
+        core_data_3 = init_core_data;
+    | false do
+        acc_accumulator_updated = acc_accumulator_temp;
+        gyro_accumulator_updated = gyro_accumulator_temp;
+        acc_acc_count_updated = acc_acc_count_temp;
+        gyro_acc_count_updated = gyro_acc_count_temp;
+        core_data_3 = core_data_2;
+    end; *)
+
+    acc_acc_count_updated = acc_acc_count;
+    gyro_acc_count_updated = gyro_acc_count;
+    acc_accumulator_updated = acc_accumulator;
+    gyro_accumulator_updated = gyro_accumulator;
+    core_data_3 = core_data;
+
+tel
+
+
 
 (* ---------------------------------------------------------------------------------------- *)
 (* LEDs *)

@@ -30,3 +30,42 @@ external val fun fmod(x:float; y:float) returns (z:float)
 
 external val fun invSqrt(x:float) returns (y:float)
 external val fun xTaskGetTickCount() returns (tick: int)
+
+external val fun arm_sqrt(x:float) returns(y:float)
+external val fun arm_cos_f32(x:float) returns(y:float)
+external val fun arm_sin_f32(x:float) returns(y:float)
+external val fun supervisor_is_flying() returns(ok:bool)
+
+type quadrocopter_state = {
+    kc_state_x: float;
+    kc_state_y: float;
+    kc_state_z: float;
+    kc_state_px: float;
+    kc_state_py: float;
+    kc_state_pz: float;
+    kc_state_d0: float;
+    kc_state_d1: float;
+    kc_state_d2: float
+}
+
+type covariance_matrix = {
+    kc_state_X: quadrocopter_state;
+    kc_state_Y: quadrocopter_state;
+    kc_state_Z: quadrocopter_state;
+    kc_state_PX: quadrocopter_state;
+    kc_state_PY: quadrocopter_state;
+    kc_state_PZ: quadrocopter_state;
+    kc_state_D0: quadrocopter_state;
+    kc_state_D1: quadrocopter_state;
+    kc_state_D2: quadrocopter_state
+}
+external val fun covariance_update(am:covariance_matrix; p:covariance_matrix) returns (p: covariance_matrix)
+external val fun enforce_covariance_matrix_symmetry(p:covariance_matrix) returns(p:covariance_matrix)
+
+(* external val fun estimator_kalman_init() returns(reset_estimation:bool)
+external val fun predict_state_forward(os_tick:int) returns (done_update:bool; core_data:kalman_coredata_t)
+external val fun kalman_core_add_process_noise(core_data:kalman_coredata_t; core_params: kalman_core_params) returns (core_data:kalman_coredata_t)
+external val fun update_queue_measurements(os_tick:int) returns(done_update1:bool; core_data_2:kalman_coredata_t; acc_latest:vec3)
+external val fun kalman_core_finalize(core_data:kalman_coredata_t; os_tick: int) returns(core_data:kalman_coredata_t)
+external val fun kalman_supervisor_is_state_within_bounds(core_data:kalman_coredata_t) returns (ok:bool)
+external val fun kalman_core_externalize_state(core_data:kalman_coredata_t; task_estimator_state:state_t; acc_latest:vec3; os_tick:int) *)

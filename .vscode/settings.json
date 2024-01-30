@@ -12,6 +12,17 @@
         "autoconf.h": "c",
         "led.h": "c",
         "types.h": "c",
-        "ledseq.h": "c"
-    }
+        "ledseq.h": "c",
+        "stabilizer.h": "c",
+        "estimator.h": "c",
+        "time.h": "c",
+        "system.h": "c",
+        "task.h": "c",
+        "kalman_core.h": "c",
+        "cfassert.h": "c",
+        "math3d.h": "c",
+        "stm32fxxx.h": "c",
+        "console.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "enabled"
 }
