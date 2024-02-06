@@ -847,6 +847,34 @@ let
 tel
 
 (* ---------------------------------------------------------------------------------------- *)
+(* Estimator and controller combined *)
+
+type sensor_combined = {
+    gyro_c: vec3;
+    acc_c: vec3;
+    mag_c: vec3;
+    baro_c: baro;
+    tof_c: tof
+}
+
+node combined_estimator_controller(sensors: sensor_combined; setpoint: setpoint)
+returns (st: state_t; control: control);
+let
+    st = estimator_complementary({  gyro_est = sensors.gyro_c;
+                                        acc_est = sensors.acc_c;
+                                        baro_est = sensors.baro_c;
+                                        tof = sensors.tof_c
+                                    });
+    control = controller_pid({  acc = sensors.acc_c;
+                                gyro = sensors.gyro_c;
+                                mag = sensors.mag_c;
+                                baro = sensors.baro_c
+                            },
+                                st,
+                                setpoint);
+tel
+
+(* ---------------------------------------------------------------------------------------- *)
 (* Kalman Estimator *)
 
 (* data types and constants *)
@@ -877,37 +905,7 @@ const kc_state_pz: int = 5
 const kc_state_d0: int = 6
 const kc_state_d1: int = 7
 const kc_state_d2: int = 8
-const kc_state_dim: int = 9
-
-type Mathext.quadrocopter_state = {
-    kc_state_x: float;
-    kc_state_y: float;
-    kc_state_z: float;
-    kc_state_px: float;
-    kc_state_py: float;
-    kc_state_pz: float;
-    kc_state_d0: float;
-    kc_state_d1: float;
-    kc_state_d2: float
-}
-
-type Mathext.covariance_matrix = {
-    kc_state_X: Mathext.quadrocopter_state;
-    kc_state_Y: Mathext.quadrocopter_state;
-    kc_state_Z: Mathext.quadrocopter_state;
-    kc_state_PX: Mathext.quadrocopter_state;
-    kc_state_PY: Mathext.quadrocopter_state;
-    kc_state_PZ: Mathext.quadrocopter_state;
-    kc_state_D0: Mathext.quadrocopter_state;
-    kc_state_D1: Mathext.quadrocopter_state;
-    kc_state_D2: Mathext.quadrocopter_state
-} *)
-
-(* type arm_matrix_instance_f32 = {
-    num_rows: int;
-    num_cols: int;
-    matrix: Mathext.covariance_matrix
-} *)
+const kc_state_dim: int = 9 *)
 
 type kalman_coredata_t = {
     s: Mathext.quadrocopter_state;
@@ -1225,7 +1223,6 @@ let
         gyro_accumulator_updated = init_vec3;
         acc_accumulator_updated = init_vec3;
         quad_is_flying = supervisor_is_flying();
-        (* quad_is_flying = false; *)
         core_data_updated = kalman_core_predict(core_data, acc_average, gyro_average, dt, quad_is_flying);
     end;
 tel
@@ -1347,16 +1344,25 @@ var q_updated: quaternion;
 let
     (q_updated, p_updated) = move_attitude_error_to_attitude(this.q, this.s.kc_state_d0, this.s.kc_state_d1, this.s.kc_state_d2, this.p);
     r_updated = convert_attitude_to_rotation_matrix(q_updated);
-    s_updated = {this.s with .kc_state_d0 = 0.0
-                            (* .kc_state_d1 = 0.0;
-                            .kc_state_d2 = 0.0 *)
-                            };
+    s_updated = {   
+        kc_state_x = this.s.kc_state_x;
+        kc_state_y = this.s.kc_state_y;
+        kc_state_z = this.s.kc_state_z;
+        kc_state_px = this.s.kc_state_px;
+        kc_state_py = this.s.kc_state_py;
+        kc_state_pz = this.s.kc_state_pz;
+        kc_state_d0 = 0.0;
+        kc_state_d1 = 0.0;
+        kc_state_d2 = 0.0
+    };
     p_final = enforce_covariance_matrix_symmetry(p_updated);
-    this_final = {this with .q = q_updated
-                           (* .r = r_updated;
-                           .s = s_updated;
-                           .p = p_final *)
-                           };
+    this_final = {  
+        s = s_updated;
+        q = q_updated;
+        r = r_updated;
+        p = p_final;
+        initial_quaternion = this.initial_quaternion
+    };
 tel
 
 node kalman_supervisor_is_state_within_bounds(this: kalman_coredata_t)
@@ -1416,40 +1422,35 @@ returns (st : state_t; core_data_3: kalman_coredata_t;
         gyro_accumulator_updated, acc_accumulator_updated: vec3);
 var 
     prediction_freq: bool;
-    (* core_data_0, core_data_1, *) core_data_2: kalman_coredata_t;
-    (* last gyro_accumulator_temp: vec3 = {x = 0.0; y = 0.0; z = 0.0};
+    core_data_0, core_data_1, core_data_2: kalman_coredata_t;
+    last gyro_accumulator_temp: vec3 = {x = 0.0; y = 0.0; z = 0.0};
     last acc_accumulator_temp: vec3 = {x = 0.0; y = 0.0; z = 0.0};
     last gyro_acc_count_temp: float = 0.0;
-    last acc_acc_count_temp: float = 0.0; *)
-    (* last reset_estimation: bool = false; *)
+    last acc_acc_count_temp: float = 0.0;
+    last reset_estimation: bool = false;
 let
     prediction_freq = everyn<<10>>();
 
-    (* switch prediction_freq
+    switch prediction_freq
     | true do
-        core_data_0 = core_data;
         (core_data_0, acc_acc_count_temp, gyro_acc_count_temp, gyro_accumulator_temp, acc_accumulator_temp) = predict_state_forward(core_data, gyro_acc_count, acc_acc_count, gyro_accumulator, acc_accumulator);
     | false do
         core_data_0 = core_data;
-    end; *)
+    end;
 
-    (* core_data_1 = kalman_core_add_process_noise(core_data); *)
-    (* core_data_1 = core_data; *)
+    core_data_1 = kalman_core_add_process_noise(core_data);
     
-    (* core_data_2 = core_data; *)
     switch done_update
     | true do
-        core_data_2 = core_data;
-        (* reset_estimation = false; *)
-        (* core_data_2 = kalman_core_finalize(core_data); *)
-        (* reset_estimation = not kalman_supervisor_is_state_within_bounds(core_data_2); *)
+        core_data_2 = kalman_core_finalize(core_data);
+        reset_estimation = not kalman_supervisor_is_state_within_bounds(core_data_2);
     | false do
         core_data_2 = core_data;
     end;
 
     st = kalman_core_externalize_state(core_data_2, acc_latest);
 
-    (* switch not (reset_estimation)
+    switch not (reset_estimation)
     | true do
         acc_accumulator_updated = init_vec3;
         gyro_accumulator_updated = init_vec3;
@@ -1462,16 +1463,9 @@ let
         acc_acc_count_updated = acc_acc_count_temp;
         gyro_acc_count_updated = gyro_acc_count_temp;
         core_data_3 = core_data_2;
-    end; *)
-
-    acc_acc_count_updated = acc_acc_count;
-    gyro_acc_count_updated = gyro_acc_count;
-    acc_accumulator_updated = acc_accumulator;
-    gyro_accumulator_updated = gyro_accumulator;
-    core_data_3 = core_data;
+    end;
 
 tel
-
 
 
 (* ---------------------------------------------------------------------------------------- *)

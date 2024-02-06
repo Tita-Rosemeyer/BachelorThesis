@@ -183,7 +183,7 @@ static void kalmanTask(void* parameters);
 static bool predictStateForward(uint32_t osTick, float dt);
 static bool updateQueuedMeasurements(const uint32_t tick);
 
-STATIC_MEM_TASK_ALLOC_STACK_NO_DMA_CCM_SAFE(kalmanTask, KALMAN_TASK_STACKSIZE);
+STATIC_MEM_TASK_ALLOC_STACK_NO_DMA_CCM_SAFE(kalmanTask, 2*KALMAN_TASK_STACKSIZE);
 
 #define LOG_LENGTH 1000
 #define LOG_RATE 20
@@ -195,6 +195,15 @@ static TickType_t* startTimes[LOG_LENGTH];
 static TickType_t endTime;
 static TickType_t* endTimes[LOG_LENGTH];
 static uint16_t* iterations[LOG_LENGTH];
+
+
+static Libel__kalman_coredata_t kalman_coredata;
+static Libel__vec3 acc_accumulator;
+static Libel__vec3 gyro_accumulator;
+static Libel__vec3 acc_latest;
+static Libel__predict_state_forward_out predict_state_forward_out;
+static Libel__predict_state_forward_mem predict_state_forward_mem;
+
 // --------------------------------------------------
 
 // Libel Functions -----------
@@ -276,7 +285,7 @@ void libel_matrix_to_covariance_matrix(float p_array[9][9], Mathext__covariance_
 void libel_from_coreData(kalmanCoreData_t *in, Libel__kalman_coredata_t *out){
   libel_array_to_quadrocpter(in->S, &out->s);
   libel_from_quaternion_kalman(in->q, &out->q);
-  memcpy(in->R, out->r, sizeof(float)*3*3);
+  memcpy( out->r, in->R,sizeof(float)*3*3);
   libel_matrix_to_covariance_matrix(in->P, &out->p);
   libel_from_quaternion_kalman(in->initialQuaternion, &out->initial_quaternion);
 }
@@ -284,7 +293,7 @@ void libel_from_coreData(kalmanCoreData_t *in, Libel__kalman_coredata_t *out){
 void libel_to_coreData(Libel__kalman_coredata_t *in, kalmanCoreData_t *out){
   libel_quadrocopter_to_array(&in->s, out->S);
   libel_to_quaternion_kalman(&in->q, out->q);
-  memcpy(in->r, out->R, sizeof(float)*3*3);
+  memcpy(out->R, in->r,  sizeof(float)*3*3);
   libel_covariance_matrix_to_matrix(&in->p, out->P);
   libel_to_quaternion_kalman(&in->initial_quaternion, out->initialQuaternion);
 }
@@ -470,6 +479,18 @@ void estimatorKalman(state_t *state, const uint32_t tick)
 }
 
 static bool predictStateForward(uint32_t osTick, float dt) {
+  libel_from_axis3f_kalman(&accAccumulator, &acc_accumulator);
+  libel_from_axis3f_kalman(&gyroAccumulator, &gyro_accumulator);
+  libel_from_coreData(&coreData, &kalman_coredata);
+  Libel__predict_state_forward_step(
+    kalman_coredata,
+    (float)gyroAccumulatorCount, (float)accAccumulatorCount,
+    gyro_accumulator,
+    acc_accumulator,  
+    &predict_state_forward_out, &predict_state_forward_mem
+  );
+
+
   if (gyroAccumulatorCount == 0
       || accAccumulatorCount == 0)
   {
