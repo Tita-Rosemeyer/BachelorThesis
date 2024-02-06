@@ -185,6 +185,16 @@ static bool updateQueuedMeasurements(const uint32_t tick);
 
 STATIC_MEM_TASK_ALLOC_STACK_NO_DMA_CCM_SAFE(kalmanTask, KALMAN_TASK_STACKSIZE);
 
+#define LOG_LENGTH 1000
+#define LOG_RATE 20
+#define DELAY LOG_RATE/10
+static TickType_t waitTime;
+static TickType_t* waitTimes[LOG_LENGTH];
+static TickType_t startTime;
+static TickType_t* startTimes[LOG_LENGTH];
+static TickType_t endTime;
+static TickType_t* endTimes[LOG_LENGTH];
+static uint16_t* iterations[LOG_LENGTH];
 // --------------------------------------------------
 
 // Libel Functions -----------
@@ -335,11 +345,12 @@ static void kalmanTask(void* parameters) {
   uint32_t lastPNUpdate = xTaskGetTickCount();
 
   rateSupervisorInit(&rateSupervisorContext, xTaskGetTickCount(), ONE_SECOND, PREDICT_RATE - 1, PREDICT_RATE + 1, 1);
-
+  int count = 0;
   while (true) {
     //DEBUG_PRINT("Kalman now\n") ;
+    waitTime = usecTimestamp();
     xSemaphoreTake(runTaskSemaphore, portMAX_DELAY);
-
+    startTime = usecTimestamp();
     // If the client triggers an estimator reset via parameter update
     if (resetEstimation) {
       estimatorKalmanInit();
@@ -418,6 +429,30 @@ static void kalmanTask(void* parameters) {
     xSemaphoreGive(dataMutex);
 
     STATS_CNT_RATE_EVENT(&updateCounter);
+    endTime = usecTimestamp();
+    
+    if(count>=0 && count/LOG_RATE == LOG_LENGTH){
+      // reset buffer when finished reading
+      count = 0;
+    }
+    if(count >= 0 && count<LOG_LENGTH){
+      // fill buffer
+      startTimes[count] = startTime;
+      endTimes[count] = endTime;
+      waitTimes[count] = waitTime;
+      iterations[count] = count;
+    }
+    if(count>=0 && count%LOG_RATE == LOG_RATE-1){
+      // get next timestamp every lograte loops
+      for(int i =1; i < LOG_LENGTH; i++){
+        startTimes[i-1] = startTimes[i];
+        endTimes[i-1] = endTimes[i];
+        waitTimes[i-1] = waitTimes[i];
+        iterations[i-1] = iterations[i];
+      }
+    }
+    count++;
+
   }
 }
 
@@ -581,7 +616,12 @@ void estimatorKalmanGetEstimatedRot(float * rotationMatrix) {
   memcpy(rotationMatrix, coreData.R, 9*sizeof(float));
 }
 
-
+LOG_GROUP_START(timer)
+LOG_ADD(LOG_UINT32, kalmanwait, &waitTimes[0])
+LOG_ADD(LOG_UINT32, kalmanstart, &startTimes[0])
+LOG_ADD(LOG_UINT32, kalmanend, &endTimes[0])
+LOG_ADD(LOG_UINT16, kalmanloop, &iterations[0])
+LOG_GROUP_STOP(timer)
 
 
 

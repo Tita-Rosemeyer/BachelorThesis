@@ -59,10 +59,29 @@
 #include "rateSupervisor.h"
 
 #include "time.h"
+static TickType_t firstLoopStartTime = 0;
 static TickType_t startTime = 0;
 static TickType_t sensorTime = 0;
 static TickType_t feedbackTime = 0;
 static TickType_t ledseqTime = 0;
+static TickType_t estimatorTime = 0;
+static TickType_t commanderTime = 0;
+static TickType_t controllerTime = 0;
+static TickType_t supervisorUpdateTime = 0;
+static TickType_t powerDistributionTime = 0;
+static TickType_t logTime = 0;
+static TickType_t rateSupervisorTime = 0;
+
+
+#define LOG_LENGTH 1000
+#define LOG_RATE 20
+#define DELAY LOG_RATE/10
+static TickType_t* startTimes[LOG_LENGTH];
+static TickType_t* sensorTimes[LOG_LENGTH];
+static TickType_t* estimatorTimes[LOG_LENGTH];
+static uint16_t* iterations[LOG_LENGTH];
+
+
 
 #define LEDSEQ_BLINK_RATE_MS 100
 
@@ -266,13 +285,36 @@ static void stabilizerTask(void* param)
   DEBUG_PRINT("Ready to fly.\n");
   Libel__ledseq_task_reset(&ledseqTaskMem);
   int led[LED_NUM];
-
+  int count = 0;
   while(1) {
     // The sensor should unlock at 1kHz
 
     startTime = usecTimestamp();
     sensorsWaitDataReady();
-    sensorTime = usecTimestamp() - startTime;
+    sensorTime = usecTimestamp();
+    
+    if(count>=0 && count/LOG_RATE == LOG_LENGTH){
+      // reset buffer when finished reading
+      count = 0;
+    }
+    if(count>=0 && count<LOG_LENGTH){
+      // fill buffer
+      startTimes[count] = startTime;
+      sensorTimes[count] = sensorTime;
+      estimatorTimes[count] = estimatorTime;
+      iterations[count] = count;
+    }
+    if(count>= 0 && count%LOG_RATE == LOG_RATE-1){
+      // get next timestamp every lograte loops
+      for(int i =1; i < LOG_LENGTH; i++){
+        startTimes[i-1] = startTimes[i];
+        sensorTimes[i-1] = sensorTimes[i];
+        estimatorTimes[i-1] = estimatorTimes[i];
+        iterations[i-1] = iterations[i];
+
+      }
+    }
+    count++;
 
     // update sensorData struct (for logging variables)
     sensorsAcquire(&sensorData, tick);
@@ -291,6 +333,7 @@ static void stabilizerTask(void* param)
         controllerType = getControllerType();
       }
 
+      estimatorTime = usecTimestamp();
       stateEstimator(&state, tick);
       compressState();
 
@@ -299,12 +342,13 @@ static void stabilizerTask(void* param)
       }
 
       commanderGetSetpoint(&setpoint, &state);
+      commanderTime = usecTimestamp() ;
       compressSetpoint();
 
       collisionAvoidanceUpdateSetpoint(&setpoint, &sensorData, &state, tick);
 
       controller(&control, &setpoint, &sensorData, &state, tick);
-
+      controllerTime = usecTimestamp() ;
       checkEmergencyStopTimeout();
 
       //
@@ -312,7 +356,7 @@ static void stabilizerTask(void* param)
       // we are ok to fly, or if the Crazyflie is in flight.
       //
       supervisorUpdate(&sensorData);
-
+      supervisorUpdateTime = usecTimestamp() ;
       if (emergencyStop || (systemIsArmed() == false)) {
         motorsStop();
       } else {
@@ -322,6 +366,7 @@ static void stabilizerTask(void* param)
         motorsSetRatio(MOTOR_M3, power_dist_out.m3);
         motorsSetRatio(MOTOR_M4, power_dist_out.m4);
       }
+      powerDistributionTime = usecTimestamp() ;
 
 #ifdef CONFIG_DECK_USD
       // Log data to uSD card if configured
@@ -331,6 +376,7 @@ static void stabilizerTask(void* param)
         usddeckTriggerLogging();
       }
 #endif
+      logTime = usecTimestamp() ;
       calcSensorToOutputLatency(&sensorData);
       tick++;
       STATS_CNT_RATE_EVENT(&stabilizerRate);
@@ -341,12 +387,22 @@ static void stabilizerTask(void* param)
           rateWarningDisplayed = true;
         }
       }
+      rateSupervisorTime = usecTimestamp() - logTime;
+
     }
 #ifdef CONFIG_MOTORS_ESC_PROTOCOL_DSHOT
     motorsBurstDshot();
 #endif
 
-    feedbackTime = usecTimestamp() - startTime - sensorTime;
+    logTime -= powerDistributionTime;
+    powerDistributionTime -= supervisorUpdateTime;
+    supervisorUpdateTime -= controllerTime;
+    controllerTime -= commanderTime;
+    commanderTime -= estimatorTime;
+    //estimatorTime -= sensorTime;
+    sensorTime -= startTime;
+
+    feedbackTime = usecTimestamp()  - startTime - sensorTime;
 
     // Ledseq
     Libel__ledseq_task_step(&ledseqTaskOut, &ledseqTaskMem);
@@ -413,7 +469,50 @@ LOG_ADD(LOG_UINT16, feedback, &feedbackTime)
  */
 LOG_ADD(LOG_UINT16, ledseq, &ledseqTime)
 
+/**
+ * @brief Time taken since beginning of the loop until estimator finishes
+ */
+LOG_ADD(LOG_UINT16, estimator, &estimatorTime)
+
+/**
+ * @brief Time taken since beginning of the loop until commander finishes
+ */
+LOG_ADD(LOG_UINT16, commander, &commanderTime)
+
+/**
+ * @brief Time taken since beginning of the loop until controller finishes
+ */
+LOG_ADD(LOG_UINT16, controller, &controllerTime)
+
+/**
+ * @brief Time taken since beginning of the loop until supervisor finishes update
+ */
+LOG_ADD(LOG_UINT16, supervisorUpdate, &supervisorUpdateTime)
+
+/**
+ * @brief Time taken since beginning of the loop until powerDistribution finishes
+ */
+LOG_ADD(LOG_UINT16, powerDistribution, &powerDistributionTime)
+
+/**
+ * @brief Time taken since beginning of the loop until logging finishes
+ */
+LOG_ADD(LOG_UINT16, log, &logTime)
+
+/**
+ * @brief Time taken since beginning of the loop until rateSupervisor finishes
+ */
+LOG_ADD(LOG_UINT16, rateSupervisor, &rateSupervisorTime)
+
+
+LOG_ADD(LOG_UINT32, sensorend, &sensorTimes[0])
+LOG_ADD(LOG_UINT32, sensorstart, &startTimes[0])
+LOG_ADD(LOG_UINT32, estimatorcall, &estimatorTimes[0])
+LOG_ADD(LOG_UINT16, stabloop, &iterations[0])
+
 LOG_GROUP_STOP(timer)
+
+
 
 /**
  * Log group for the current controller target
