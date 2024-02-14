@@ -65,6 +65,7 @@
 #include "static_mem.h"
 
 #include "lighthouse_calibration.h"
+#include "estimator_kalman.h"
 // #define DEBUG_STATE_CHECK
 
 // the reversion of pitch and roll to zero
@@ -328,7 +329,7 @@ void kalmanCoreUpdateWithBaro(kalmanCoreData_t *this, const kalmanCoreParams_t *
   kalmanCoreScalarUpdate(this, &H, meas - this->S[KC_STATE_Z], params->measNoiseBaro);
 }
 
-void kalmanCorePredict(kalmanCoreData_t* this, Axis3f *acc, Axis3f *gyro, float dt, bool quadIsFlying)
+void kalmanCorePredict(kalmanCoreData_t* this, Axis3f *acc, Axis3f *gyro, float dt, bool quadIsFlying, arm_matrix_instance_f32 Libel_Pm, float* Libel_S, bool print_debug)
 {
   /* Here we discretize (euler forward) and linearise the quadrocopter dynamics in order
    * to push the covariance forward.
@@ -462,7 +463,10 @@ void kalmanCorePredict(kalmanCoreData_t* this, Axis3f *acc, Axis3f *gyro, float 
   A[KC_STATE_D2][KC_STATE_D1] = -d0 + d1*d2/2;
   A[KC_STATE_D2][KC_STATE_D2] = 1 - d0*d0/2 - d1*d1/2;
 
-
+  if(print_debug){
+    //equal_float_array("A[KC_STATE_PX]", A[KC_STATE_PX], Libel_S, 9);
+    //equal_float_array("Linearized matrices", A, Libel_Pm.pData, 81);
+  }
   // ====== COVARIANCE UPDATE ======
   mat_mult(&Am, &this->Pm, &tmpNN1m); // A P
   mat_trans(&Am, &tmpNN2m); // A'

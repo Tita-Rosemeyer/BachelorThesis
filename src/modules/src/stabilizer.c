@@ -76,10 +76,11 @@ static TickType_t rateSupervisorTime = 0;
 #define LOG_LENGTH 1000
 #define LOG_RATE 20
 #define DELAY LOG_RATE/10
+#define MAX_COUNT 256
 static TickType_t* startTimes[LOG_LENGTH];
 static TickType_t* sensorTimes[LOG_LENGTH];
 static TickType_t* estimatorTimes[LOG_LENGTH];
-static uint16_t* iterations[LOG_LENGTH];
+static uint8_t* iterations[LOG_LENGTH];
 
 
 
@@ -302,7 +303,7 @@ static void stabilizerTask(void* param)
       startTimes[count] = startTime;
       sensorTimes[count] = sensorTime;
       estimatorTimes[count] = estimatorTime;
-      iterations[count] = count;
+      iterations[count] = count%MAX_COUNT;
     }
     if(count>= 0 && count%LOG_RATE == LOG_RATE-1){
       // get next timestamp every lograte loops
@@ -508,7 +509,7 @@ LOG_ADD(LOG_UINT16, rateSupervisor, &rateSupervisorTime)
 LOG_ADD(LOG_UINT32, sensorend, &sensorTimes[0])
 LOG_ADD(LOG_UINT32, sensorstart, &startTimes[0])
 LOG_ADD(LOG_UINT32, estimatorcall, &estimatorTimes[0])
-LOG_ADD(LOG_UINT16, stabloop, &iterations[0])
+LOG_ADD(LOG_UINT8, stabloop, &iterations[0])
 
 LOG_GROUP_STOP(timer)
 

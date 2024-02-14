@@ -184,4 +184,19 @@ typedef struct Mathext__supervisor_is_flying_out {
 
 void Mathext__supervisor_is_flying_step(Mathext__supervisor_is_flying_out* _out);
 
+typedef struct Mathext__relay_state_out {
+  int ok;
+} Mathext__relay_state_out;
+
+void Mathext__relay_state_step(Mathext__quadrocopter_state s, Mathext__relay_state_out* _out);
+
+typedef struct Mathext__relay_covariance_matrix_out {
+  int ok;
+} Mathext__relay_covariance_matrix_out;
+
+void Mathext__relay_covariance_matrix_step(Mathext__covariance_matrix p, Mathext__relay_covariance_matrix_out* _out);
+
+
+
+
 #endif // MATHEXT_H

@@ -36,6 +36,7 @@ external val fun arm_cos_f32(x:float) returns(y:float)
 external val fun arm_sin_f32(x:float) returns(y:float)
 external val fun supervisor_is_flying() returns(ok:bool)
 
+
 type quadrocopter_state = {
     kc_state_x: float;
     kc_state_y: float;
@@ -69,3 +70,6 @@ external val fun update_queue_measurements(os_tick:int) returns(done_update1:boo
 external val fun kalman_core_finalize(core_data:kalman_coredata_t; os_tick: int) returns(core_data:kalman_coredata_t)
 external val fun kalman_supervisor_is_state_within_bounds(core_data:kalman_coredata_t) returns (ok:bool)
 external val fun kalman_core_externalize_state(core_data:kalman_coredata_t; task_estimator_state:state_t; acc_latest:vec3; os_tick:int) *)
+
+external val fun relay_state(s:quadrocopter_state) returns (ok:bool)
+external val fun relay_covariance_matrix(p:covariance_matrix) returns (ok:bool)

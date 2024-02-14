@@ -206,9 +206,37 @@ void Mathext__enforce_covariance_matrix_symmetry_step(Mathext__covariance_matrix
     }
   }
   _out->p = p;
+  
 }
 
 #include "supervisor.h"
 void Mathext__supervisor_is_flying_step(Mathext__supervisor_is_flying_out* _out) {
   _out->ok = supervisorIsFlying();
+}
+
+#include "debug.h"
+#include "estimator_kalman.h"
+void Mathext__relay_state_step(Mathext__quadrocopter_state s, Mathext__relay_state_out* _out){
+  float S[9];
+  /*S[0] = s.kc_state_x;
+  S[1] = s.kc_state_y;
+  S[2] = s.kc_state_z;
+  S[3] = s.kc_state_px;
+  S[4] = s.kc_state_py;
+  S[5] = s.kc_state_pz;
+  S[6] = s.kc_state_d0;
+  S[7] = s.kc_state_d1;
+  S[8] = s.kc_state_d2;*/
+  //DEBUG_PRINT("%.4f\n", s.kc_state_z);
+  quadrocpter_to_array(&s, S);
+  relayLibelState(S);
+  _out->ok = false;
+  //DEBUG_PRINT("(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f)\n", s.kc_state_x, s.kc_state_y, s.kc_state_z, s.kc_state_px, s.kc_state_py, s.kc_state_pz, s.kc_state_d0, s.kc_state_d1, s.kc_state_d2);
+}
+
+void Mathext__relay_covariance_matrix_step(Mathext__covariance_matrix p, Mathext__relay_covariance_matrix_out* _out){
+  float P[9][9];
+  covariance_matrix_to_matrix(&p, P);
+  relayLibelCovarianceMatrix(P);
+  _out->ok = true;
 }

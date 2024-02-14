@@ -125,6 +125,8 @@ typedef struct {
   float initialYaw;
 } kalmanCoreParams_t;
 
+
+
 /*  - Load default parameters */
 void kalmanCoreDefaultParams(kalmanCoreParams_t *params);
 
@@ -141,7 +143,7 @@ void kalmanCoreUpdateWithBaro(kalmanCoreData_t *this, const kalmanCoreParams_t *
  *
  * The filter progresses as:
  *  - Predicting the current state forward */
-void kalmanCorePredict(kalmanCoreData_t *this, Axis3f *acc, Axis3f *gyro, float dt, bool quadIsFlying);
+void kalmanCorePredict(kalmanCoreData_t *this, Axis3f *acc, Axis3f *gyro, float dt, bool quadIsFlying, arm_matrix_instance_f32 Libel_Pm, float* Libel_S, bool print_debug);
 
 void kalmanCoreAddProcessNoise(kalmanCoreData_t *this, const kalmanCoreParams_t *params, float dt);
 
@@ -156,3 +158,5 @@ void kalmanCoreDecoupleXY(kalmanCoreData_t* this);
 void kalmanCoreScalarUpdate(kalmanCoreData_t* this, arm_matrix_instance_f32 *Hm, float error, float stdMeasNoise);
 
 void kalmanCoreUpdateWithPKE(kalmanCoreData_t* this, arm_matrix_instance_f32 *Hm, arm_matrix_instance_f32 *Km, arm_matrix_instance_f32 *P_w_m, float error);
+
+

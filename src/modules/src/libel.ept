@@ -590,7 +590,7 @@ const attitude_update_dt_estimator: float = 1.0 /. attitude_update_rate_estimato
 const position_update_rate: float = rate_100_hz
 const position_update_dt: float = 1.0 /. position_update_rate
 
-const pi_f : float = 3.14159265358979323846
+const pi_f : float = 3.14159265358979
 const twoKp : float = 2.0 *. 0.4
 const twoKi : float = 2.0 *. 0.001
 const grav_const : float = 9.81
@@ -1166,10 +1166,10 @@ let
         tmpq2_1 = keep*.tmpq2 +. rollpitch_zero_reversion*.initial_q.qy;
         tmpq3_1 = keep*.tmpq3 +. rollpitch_zero_reversion*.initial_q.qz;
         norm = arm_sqrt(tmpq0_1*.tmpq0_1 +. tmpq1_1*.tmpq1_1 +. tmpq2_1*.tmpq2_1 +. tmpq3_1*.tmpq3_1);
-        q_updated = {qx = tmpq0_1 /. norm; qy = tmpq1_1 /. norm; qz = tmpq2_1 /. norm; qw = tmpq3_1 /. norm};
+        q_updated = {qw = tmpq0_1 /. norm; qx = tmpq1_1 /. norm; qy = tmpq2_1 /. norm; qz = tmpq3_1 /. norm};
     | false do
         norm = arm_sqrt(tmpq0*.tmpq0 +. tmpq1*.tmpq1 +. tmpq2*.tmpq2 +. tmpq3*.tmpq3);
-        q_updated = {qx = tmpq0 /. norm; qy = tmpq1 /. norm; qz = tmpq2 /. norm; qw = tmpq3 /. norm};
+        q_updated = {qw = tmpq0 /. norm; qx = tmpq1 /. norm; qy = tmpq2 /. norm; qz = tmpq3 /. norm};
     end;
 tel
 
@@ -1178,11 +1178,14 @@ node kalman_core_predict(this: kalman_coredata_t; acc: vec3; gyro: vec3; dt: flo
 returns (this_updated: kalman_coredata_t);
 var am, am_temp: Mathext.covariance_matrix;
     s_updated: Mathext.quadrocopter_state;
-    q_updated: quaternion;
+    q_updated: quaternion; print_cov: bool; print_state: bool;
 let
     am_temp = linearize(this.r, this.s, gyro, dt);
+    print_cov = relay_covariance_matrix(am_temp);
     am = covariance_update(am_temp, this.p);
     (s_updated, q_updated) = prediction_step(this.s, this.r, this.q, this.initial_quaternion, quad_is_flying, acc, gyro, dt);
+    print_state= relay_state(s_updated);
+    
     this_updated = {s = s_updated;
                     q = q_updated;
                     r = this.r;
@@ -1201,7 +1204,7 @@ var last gyro_average: vec3 = {x = 0.0; y = 0.0; z = 0.0};
     dt: float;
     last quad_is_flying: bool = false;
 let
-    dt = rate_100_hz;
+    dt = 1.0/.rate_100_hz;
     switch (gyro_accumulator_count = 0.0 or acc_accumulator_count = 0.0)
     | true do
         gyro_accumulator_updated = gyro_accumulator;
