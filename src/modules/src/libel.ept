@@ -1374,8 +1374,8 @@ let
             this.s.kc_state_px >. max_velocity or this.s.kc_state_px <. -.max_velocity or
             this.s.kc_state_py >. max_velocity or this.s.kc_state_py <. -.max_velocity or
             this.s.kc_state_pz >. max_velocity or this.s.kc_state_pz <. -.max_velocity)
-        then true
-        else false;
+        then false
+        else true;
 tel
 
 node kalman_core_externalize_state(this: kalman_coredata_t; acc: vec3)
@@ -1450,7 +1450,7 @@ let
 
     st = kalman_core_externalize_state(core_data_2, acc_latest);
 
-    switch not (reset_estimation)
+    switch (reset_estimation)
     | true do
         acc_accumulator_updated = init_vec3;
         gyro_accumulator_updated = init_vec3;
