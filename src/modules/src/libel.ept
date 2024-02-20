@@ -1181,7 +1181,6 @@ var am, am_temp: Mathext.covariance_matrix;
     q_updated: quaternion; print_cov: bool; print_state: bool;
 let
     am_temp = linearize(this.r, this.s, gyro, dt);
-    print_cov = relay_covariance_matrix(am_temp);
     am = covariance_update(am_temp, this.p);
     (s_updated, q_updated) = prediction_step(this.s, this.r, this.q, this.initial_quaternion, quad_is_flying, acc, gyro, dt);
     print_state= relay_state(s_updated);
@@ -1235,15 +1234,15 @@ returns (core_data_final: kalman_coredata_t);
 var dt: float;
     core_data_updated: kalman_coredata_t;
 let
-    dt = rate_1000_hz;
+    dt = 1.0/.rate_1000_hz;
     core_data_updated = { core_data with
         .p = {
             kc_state_X = { core_data.p.kc_state_X with .kc_state_x = core_data.p.kc_state_X.kc_state_x +. power((params.proc_noise_acc_xy*.dt*.dt +. params.proc_noise_vel*.dt +. params.proc_noise_pos), 2.0)};
             kc_state_Y = { core_data.p.kc_state_Y with .kc_state_y = core_data.p.kc_state_Y.kc_state_y +. power((params.proc_noise_acc_xy*.dt*.dt +. params.proc_noise_vel*.dt +. params.proc_noise_pos), 2.0)};
             kc_state_Z = { core_data.p.kc_state_Z with .kc_state_z = core_data.p.kc_state_Z.kc_state_z +. power((params.proc_noise_acc_z*.dt*.dt +. params.proc_noise_vel*.dt +. params.proc_noise_pos), 2.0)};
             kc_state_PX = { core_data.p.kc_state_PX with .kc_state_px = core_data.p.kc_state_PX.kc_state_px +. power((params.proc_noise_acc_xy*.dt +. params.proc_noise_vel), 2.0)};
-            kc_state_PY = { core_data.p.kc_state_PX with .kc_state_py = core_data.p.kc_state_PY.kc_state_py +. power((params.proc_noise_acc_xy*.dt +. params.proc_noise_vel), 2.0)};
-            kc_state_PZ = { core_data.p.kc_state_PX with .kc_state_pz = core_data.p.kc_state_PZ.kc_state_pz +. power((params.proc_noise_acc_z*.dt +. params.proc_noise_vel), 2.0)};
+            kc_state_PY = { core_data.p.kc_state_PY with .kc_state_py = core_data.p.kc_state_PY.kc_state_py +. power((params.proc_noise_acc_xy*.dt +. params.proc_noise_vel), 2.0)};
+            kc_state_PZ = { core_data.p.kc_state_PZ with .kc_state_pz = core_data.p.kc_state_PZ.kc_state_pz +. power((params.proc_noise_acc_z*.dt +. params.proc_noise_vel), 2.0)};
             kc_state_D0 = { core_data.p.kc_state_D0 with .kc_state_d0 = core_data.p.kc_state_D0.kc_state_d0 +. power((params.proc_noise_gyro_rollpitch*.dt +. params.proc_noise_att), 2.0)};
             kc_state_D1 = { core_data.p.kc_state_D1 with .kc_state_d1 = core_data.p.kc_state_D1.kc_state_d1 +. power((params.proc_noise_gyro_rollpitch*.dt +. params.proc_noise_att), 2.0)};
             kc_state_D2 = { core_data.p.kc_state_D2 with .kc_state_d2 = core_data.p.kc_state_D2.kc_state_d2 +. power((params.proc_noise_gyro_yaw*.dt +. params.proc_noise_att), 2.0)}
