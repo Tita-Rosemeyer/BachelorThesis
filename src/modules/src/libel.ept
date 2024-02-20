@@ -1178,13 +1178,11 @@ node kalman_core_predict(this: kalman_coredata_t; acc: vec3; gyro: vec3; dt: flo
 returns (this_updated: kalman_coredata_t);
 var am, am_temp: Mathext.covariance_matrix;
     s_updated: Mathext.quadrocopter_state;
-    q_updated: quaternion; print_cov: bool; print_state: bool;
+    q_updated: quaternion;
 let
     am_temp = linearize(this.r, this.s, gyro, dt);
     am = covariance_update(am_temp, this.p);
     (s_updated, q_updated) = prediction_step(this.s, this.r, this.q, this.initial_quaternion, quad_is_flying, acc, gyro, dt);
-    print_state= relay_state(s_updated);
-    
     this_updated = {s = s_updated;
                     q = q_updated;
                     r = this.r;
