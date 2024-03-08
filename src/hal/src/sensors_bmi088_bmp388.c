@@ -55,6 +55,27 @@
 
 #include "sensors_bmi088_common.h"
 
+
+/* TITA: logging of Sensorstask times */
+
+#include "time.h"
+static TickType_t startTime = 0;
+static TickType_t endTime = 0;
+static TickType_t newDataTime = 0;
+
+
+#define LOG_LENGTH 1000
+#define LOG_RATE 20
+#define DELAY LOG_RATE/10
+#define MAX_COUNT 256
+static TickType_t* startTimes[LOG_LENGTH];
+static TickType_t* endTimes[LOG_LENGTH];
+static TickType_t* newDataTimes[LOG_LENGTH];
+static TickType_t* iterations[LOG_LENGTH];
+
+
+/* TITA end*/
+
 #define GYRO_ADD_RAW_AND_VARIANCE_LOG_VALUES
 
 #define SENSORS_READ_RATE_HZ            1000
@@ -297,10 +318,12 @@ static void sensorsTask(void *param)
    * this is only required by the z-ranger, since the
    * configuration will be done after system start-up */
   //vTaskDelayUntil(&lastWakeTime, M2T(1500));
+  int count = 0;
   while (1)
   {
     if (pdTRUE == xSemaphoreTake(sensorsDataReady, portMAX_DELAY))
     {
+      startTime = usecTimestamp();
       sensorData.interruptTimestamp = imuIntTimestamp;
 
       /* get data from chosen sensors */
@@ -367,7 +390,29 @@ static void sensorsTask(void *param)
     {
       xQueueOverwrite(barometerDataQueue, &sensorData.baro);
     }
+    endTime = usecTimestamp();
 
+    if(count>=0 && count/LOG_RATE == LOG_LENGTH){
+      // reset buffer when finished reading
+      count = 0;
+    }
+    if(count>=0 && count<LOG_LENGTH){
+      // fill buffer
+      startTimes[count] = startTime;
+      endTimes[count] = endTime;
+      newDataTimes[count] = newDataTime;
+      iterations[count] = count%MAX_COUNT;
+    }
+    if(count>= 0 && count%LOG_RATE == LOG_RATE-1){
+      // get next timestamp every lograte loops
+      for(int i =1; i < LOG_LENGTH; i++){
+        startTimes[i-1] = startTimes[i];
+        endTimes[i-1] = endTimes[i];
+        newDataTimes[i-1] = newDataTimes[i];
+        iterations[i-1] = iterations[i];
+      }
+    }
+    count++;
     xSemaphoreGive(dataReady);
   }
 }
@@ -967,6 +1012,7 @@ void sensorsBmi088Bmp388DataAvailableCallback(void)
 {
   portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
   imuIntTimestamp = usecTimestamp();
+  newDataTime = usecTimestamp();
   xSemaphoreGiveFromISR(sensorsDataReady, &xHigherPriorityTaskWoken);
 
   if (xHigherPriorityTaskWoken)
@@ -974,6 +1020,17 @@ void sensorsBmi088Bmp388DataAvailableCallback(void)
     portYIELD();
   }
 }
+
+/**
+ * Log group for the current sensorsTask loop
+ */
+LOG_GROUP_START(timer)
+LOG_ADD(LOG_UINT32, sensorsend, &endTimes[0])
+LOG_ADD(LOG_UINT32, sensorsstart, &startTimes[0])
+LOG_ADD(LOG_UINT32, newData, &newDataTimes[0])
+LOG_ADD(LOG_UINT8, sensorsloop, &iterations[0])
+LOG_GROUP_STOP(timer)
+
 
 #ifdef GYRO_ADD_RAW_AND_VARIANCE_LOG_VALUES
 LOG_GROUP_START(gyro)

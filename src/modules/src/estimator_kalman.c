@@ -99,6 +99,8 @@
 
 #include "arm_math.h"
 
+#include "tita_debug_functions.h"
+
 // #define KALMAN_USE_BARO_UPDATE
 
 
@@ -183,26 +185,41 @@ static const bool useBaroUpdate = false;
 
 static void kalmanTask(void* parameters);
 static bool predictStateForward(uint32_t osTick, float dt);
-static bool updateQueuedMeasurements(const uint32_t tick);
+bool updateQueuedMeasurements(const uint32_t tick);
 
-STATIC_MEM_TASK_ALLOC_STACK_NO_DMA_CCM_SAFE(kalmanTask, 3*KALMAN_TASK_STACKSIZE);
+#define KALMAN_TASK_STACKSIZE_OLD 450
+#define KALMAN_TASK_STACKSIZE_NEW 1400
+STATIC_MEM_TASK_ALLOC_STACK_NO_DMA_CCM_SAFE(kalmanTask, KALMAN_TASK_STACKSIZE_NEW);
 
 #define LOG_LENGTH 1000
 #define LOG_RATE 20
 #define DELAY LOG_RATE/10
 #define MAX_COUNT 256
-static TickType_t waitTime;
-static TickType_t* waitTimes[LOG_LENGTH];
-static TickType_t startTime;
+static TickType_t startTime =0;
 static TickType_t* startTimes[LOG_LENGTH];
-static TickType_t endTime;
+static TickType_t endTime =0;
 static TickType_t* endTimes[LOG_LENGTH];
 static uint8_t* iterations[LOG_LENGTH];
 
+static TickType_t tmpTime=0;
+static TickType_t c_predStFwdTime =0;
+static TickType_t c_procNoiseTime=0;
+static TickType_t c_finalizeTime=0;
+static TickType_t c_externalizeTime=0;
+static TickType_t c_stateInBoundsTime=0;
+static TickType_t libel_predStFwdTime =0;
+static TickType_t libel_procNoiseTime=0;
+static TickType_t libel_finalizeTime=0;
+static TickType_t libel_externalizeTime=0;
+static TickType_t libel_stateInBoundsTime=0;
 
 
 
-static kalmanCoreData_t libel_coredata;
+static Libel__flow libel_flow;
+static Libel__tof libel_tof;
+static Libel__vec3 libel_acc;
+static Libel__vec3 libel_gyro;
+
 
 NO_DMA_CCM_SAFE_ZERO_INIT static float am_temp[KC_STATE_DIM][KC_STATE_DIM];
 static __attribute__((aligned(4))) arm_matrix_instance_f32 Am = { KC_STATE_DIM, KC_STATE_DIM, (float *)am_temp};
@@ -211,295 +228,74 @@ static __attribute__((aligned(4))) arm_matrix_instance_f32 Am = { KC_STATE_DIM, 
 // -------------------------------------------------------
 // Debug Functions ---------------------------------------
 
-#define EPS 0.0001
-#define DEBUG_FRIST_N 30
-#define DEBUG_BLOCK_SIZE 10
-#define DEBUG_EVERY_N 12
+#define DEBUG_FIRST_N 5
+#define DEBUG_BLOCK_SIZE 50
+#define DEBUG_EVERY_N 500
+
+
+#define DEBUG_PREDICT_STATE_FORWARD false;
+#define DEBUG_ADD_PROCESS_NOISE false;
+#define DEBUG_FINALIZE false;
+#define DEBUG_EXTERNALIZE false;
+#define DEBUG_STATE_WITHIN_BOUNDS false;
+#define DEBUG_UPDATE_MEASUREMENT true;
 
 
 
-// Check if states are equal
+static int debug_predict_state_forward = false;
+static int debug_add_process_noise = false;
+static int debug_finalize = false;
+static int debug_externalize = false;
+static int debug_state_within_bounds = false;
+static int debug_update_measurement = false;
 
-int equal_floats(char *name, float f1, float f2) {
-    float diff = fabsf(f1 - f2);
-    if (diff > EPS) {
-    // if (f1 != f2) {
-        DEBUG_PRINT("Mismatch in %s!  expected: %.4f got: %.4f\n", name, f1, f2);
-        //DEBUG_PRINT("Difference is %.2f\n", diff);
-        return 0;
-    }
-    //DEBUG_PRINT("Good in %s\n", name);//DEBUG_PRINT("Good in %s : expected %.2f, got %.2f\n", name, f1, f2);
-    return 1;
-}
 
-int equal_axis3f(char *varname, Axis3f ref, Axis3f got) {
-  float dx = fabsf(ref.x - got.x);
-  float dy = fabsf(ref.y - got.y);
-  float dz = fabsf(ref.z - got.z);
-  if(fmaxf(dx, fmaxf(dy,dz))> EPS){
-    DEBUG_PRINT("Mismatch in %s! expected: (%.4f,%.4f,%.4f) got: (%.4f,%.4f,%.4f)\n", varname,ref.x,ref.y,ref.z, got.x,got.y,got.z);
-    return false;
-  }
-  return true;
-}
 
-int equal_int16(const char *varname, int16_t i1, int16_t i2) {
-    int diff = abs(i1 - i2);
-    if (diff > abs(i1 * 0.1)) {
-        DEBUG_PRINT("Divergence in %s : expected %d, got %d\n", varname, i1, i2);
-        return false;
-    }
-    //DEBUG_PRINT("Good in %s : expected %d, got %d\n", varname, i1, i2);
-    return true;
-}
-
-int equal_attitude(const attitude_t *attitude1, const attitude_t *attitude2) {
-    int roll = equal_floats("attitude.roll", attitude1->roll, attitude2->roll);
-    int pitch = equal_floats("attitude.pitch", attitude1->pitch, attitude2->pitch);
-    int yaw = equal_floats("attitude.yaw", attitude1->yaw, attitude2->yaw);
-    return roll && pitch && yaw;
-}
-
-int equal_attitudeQuaternion(const quaternion_t *attitudeQuaternion1, const quaternion_t *attitudeQuaternion2) {
-    int w = equal_floats("attitudeQuaternion.w", attitudeQuaternion1->w, attitudeQuaternion2->w);
-    int x = equal_floats("attitudeQuaternion.x", attitudeQuaternion1->x, attitudeQuaternion2->x);
-    int y = equal_floats("attitudeQuaternion.y", attitudeQuaternion1->y, attitudeQuaternion2->y);
-    int z = equal_floats("attitudeQuaternion.z", attitudeQuaternion1->z, attitudeQuaternion2->z);
-    return x && y && z && w;
-}
-
-int equal_position(const point_t *position1, const point_t *position2) {
-    int x = equal_floats("position.x", position1->x, position2->x);
-    int y = equal_floats("position.y", position1->y, position2->y);
-    int z = equal_floats("position.z", position1->z, position2->z);
-    return x && y && z;
-}
-
-int equal_velocity(const velocity_t *velocity1, const velocity_t *velocity2) {
-    int x = equal_floats("velocity.x", velocity1->x, velocity2->x);
-    int y = equal_floats("velocity.y", velocity1->y, velocity2->y);
-    int z = equal_floats("velocity.z", velocity1->z, velocity2->z);
-    return x && y && z;
-}
-
-int equal_acc(const acc_t *acc1, const acc_t *acc2) {
-    int x = equal_floats("acc.x", acc1->x, acc2->x);
-    int y = equal_floats("acc.y", acc1->y, acc2->y);
-    int z = equal_floats("acc.z", acc1->z, acc2->z);
-    return x && y && z;
-}
-
-void debug_print_state(state_t *struc){
-    DEBUG_PRINT("yaw: %.2f ", struc->attitude.yaw);
-    DEBUG_PRINT("pitch: %.2f ", struc->attitude.pitch);
-    DEBUG_PRINT("roll: %.2f ", struc->attitude.roll);
-    DEBUG_PRINT("q: (%.2f, %.2f, %.2f, %.2f) ", struc->attitudeQuaternion.w, struc->attitudeQuaternion.x, struc->attitudeQuaternion.y, struc->attitudeQuaternion.z);
-    DEBUG_PRINT("vel: (%.2f, %.2f, %.2f) ", struc->velocity.x, struc->velocity.y, struc->velocity.z);
-    DEBUG_PRINT("pos: (%.2f, %.2f, %.2f) ", struc->position.x, struc->position.y, struc->position.z);
-    DEBUG_PRINT("acc: (%.2f, %.2f, %.2f) ", struc->acc.x, struc->acc.y, struc->acc.z);
-}
-
-int equal_state(state_t *state1, state_t *state2){
-    int quat = equal_attitudeQuaternion(&state1->attitudeQuaternion, &state2->attitudeQuaternion);
-    int attitude = equal_attitude(&state1->attitude, &state2->attitude);
-    int pos = equal_position(&state1->position, &state2->position);
-    int vel = equal_velocity(&state1->velocity, &state2->velocity);
-    int acc = equal_acc(&state1->acc, &state2->acc);
-    // if (pos && vel && acc)
-    if (attitude && quat && pos && vel && acc)
-        return 1;
-    else
-        // debug_print_state(state2);
-    return 0;
-}
-int equal_controls(const control_t *control1, const control_t *control2) {
-    bool a = equal_int16("control.roll", control1->roll, control2->roll);
-    bool b = equal_int16("control.pitch", control1->pitch, control2->pitch);
-    bool c = equal_int16("control.yaw", control1->yaw, control2->yaw);
-    bool d = equal_floats("control.thrust", control1->thrust, control2->thrust);
-    return
-        a && b && c && d;
-}
-
-int equal_float_array(const char* varname, float* ref, float *got, int n){
-  for (int i = 0; i < n; i++)
-  {
-    if(fabsf(ref[i] - got[i])>EPS){
-      DEBUG_PRINT("Mismatch in %s (index %i/%i)! expected: %.5f got: %.5f (diff: %.4f) \n", varname, i, n, ref[i], got[i], fabsf(ref[i] - got[i]));
-      //print_statematrix(ref, got);
-      return false;
-    }
-  }
-  //DEBUG_PRINT("Good in %s \n", varname);
-  return true;
-}
-
-int equal_arm_matrix_f32(const char* varname, arm_matrix_instance_f32 ref, arm_matrix_instance_f32 got){
-  if(ref.numCols != got.numCols || ref.numRows != got.numRows){
-    DEBUG_PRINT("%s shape mismatch! expected: (%i,%i) got: (%i,%i)\n", varname, ref.numRows, ref.numCols, got.numRows, got.numCols);
-    return false;
-  }
-  return equal_float_array(varname, ref.pData, got.pData, ref.numCols*ref.numRows);
-  
-}
-
-int equal_coredata(kalmanCoreData_t *refcore, kalmanCoreData_t* gotcore){
-  
-  int equal_quat = equal_float_array("initial Quaternion", refcore->initialQuaternion, gotcore->initialQuaternion, 4);
-  int equal_ref_height =  equal_floats("baroReferenceHeight", refcore->baroReferenceHeight, gotcore->baroReferenceHeight);
-  int equal_covariance =  equal_arm_matrix_f32("Covariance Matrix", refcore->Pm, gotcore->Pm);
-  //int equal_state =  equal_float_array("State array", refcore->S, gotcore->S, KC_STATE_DIM);
-  int equal_attitude =  equal_float_array("Attitude quaternion", refcore->q, gotcore->q, 4);
-  int equal_R = equal_float_array("R", refcore->R, gotcore->R, 9);
-  int equal_state = equal_float_array("State array", refcore->S, gotcore->S, 9);
-  return true;
-  //return equal_R && equal_quat && equal_ref_height && equal_covariance && equal_state && equal_attitude;
-}
-
-void print_statematrix(float* ref, float* got){
-  //DEBUG_PRINT("Expected: \t \t \t \t Got:\n");
-  DEBUG_PRINT("Ref: (%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f) Got:      (%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f)\n", ref[0], ref[1],ref[2], ref[3], ref[4], ref[5], ref[6], ref[7], ref[8], got[0], got[1], got[2], got[3], got[4], got[5], got[6], got[7], got[8]);
-}
-void print_state(float* ref){
-  DEBUG_PRINT("(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f)\n", ref[0], ref[1],ref[2], ref[3], ref[4], ref[5], ref[6], ref[7], ref[8]);
-}
 
 static int debug_count = 0;
 int do_print_debug(){
   debug_count++;
   if(debug_count%DEBUG_EVERY_N<DEBUG_BLOCK_SIZE){
-    DEBUG_PRINT("----------DEBUG %i-------\n", debug_count);  
+    debug_externalize = DEBUG_EXTERNALIZE;
+    debug_add_process_noise = DEBUG_ADD_PROCESS_NOISE;
+    debug_predict_state_forward = DEBUG_PREDICT_STATE_FORWARD;
+    debug_finalize = DEBUG_FINALIZE;
+    debug_state_within_bounds = DEBUG_STATE_WITHIN_BOUNDS;
+    debug_update_measurement = DEBUG_UPDATE_MEASUREMENT;
+
+    char predict_names[128] = "";
+    if(debug_add_process_noise){
+      strcat(predict_names, "PrNoise ");
+    }
+    if(debug_predict_state_forward){
+      strcat(predict_names, "PredStateFwd ");
+    }
+    if(debug_finalize){
+      strcat(predict_names, "Finalize ");
+    }
+    if(debug_externalize){
+      strcat(predict_names, "Externalize ");
+    }
+    if(debug_state_within_bounds){
+      strcat(predict_names, "StateInBounds ");
+    }
+    if(debug_update_measurement){
+      strcat(predict_names, "UpdateMeasurement");
+    }
+    //DEBUG_PRINT("------%i DEBUG %i ( %s) ----\n",KALMAN_TASK_STACKSIZE_NEW, debug_count,predict_names);  
     return true;
   }
-  return false;
+  debug_externalize = false;
+  debug_add_process_noise = false;
+  debug_predict_state_forward = false;
+  debug_finalize = false;
+  debug_state_within_bounds = false;
+  debug_update_measurement = false;
 }
-
-// --------------------------------------------------
-
-// Libel Functions -----------
-
-void libel_from_axis3f_kalman(Axis3f *in, Libel__vec3 *out) {
-  out->x = in->x;
-  out->y = in->y;
-  out->z = in->z;
-}
-
-void libel_to_axis3f_kalman(Libel__vec3 *in, Axis3f *out) {
-  out->x = in->x;
-  out->y = in->y;
-  out->z = in->z;
-}
-
-void libel_from_quaternion_kalman(float in[4], Libel__quaternion *out) {
-  out->qw = in[0];
-  out->qx = in[1];
-  out->qy = in[2];
-  out->qz = in[3];
-}
-
-void libel_to_quaternion_kalman(Libel__quaternion *in, float out[4]) {
-  out[0] = in->qw;
-  out[1] = in->qx;
-  out[2] = in->qy;
-  out[3] = in->qz;
-}
-
-void libel_quadrocopter_to_array(Mathext__quadrocopter_state* q, float p_array[9]) {
-  p_array[0] = q->kc_state_x;
-  p_array[1] = q->kc_state_y;
-  p_array[2] = q->kc_state_z;
-  p_array[3] = q->kc_state_px;
-  p_array[4] = q->kc_state_py;
-  p_array[5] = q->kc_state_pz;
-  p_array[6] = q->kc_state_d0;
-  p_array[7] = q->kc_state_d1;
-  p_array[8] = q->kc_state_d2;
-}
-
-void libel_covariance_matrix_to_matrix(Mathext__covariance_matrix* p, float p_array[9][9]) {
-  libel_quadrocopter_to_array(&p->kc_state_X, p_array[0]);
-  libel_quadrocopter_to_array(&p->kc_state_Y, p_array[1]);
-  libel_quadrocopter_to_array(&p->kc_state_Z, p_array[2]);
-  libel_quadrocopter_to_array(&p->kc_state_PX, p_array[3]);
-  libel_quadrocopter_to_array(&p->kc_state_PY, p_array[4]);
-  libel_quadrocopter_to_array(&p->kc_state_PZ, p_array[5]);
-  libel_quadrocopter_to_array(&p->kc_state_D0, p_array[6]);
-  libel_quadrocopter_to_array(&p->kc_state_D1, p_array[7]);
-  libel_quadrocopter_to_array(&p->kc_state_D2, p_array[8]);
-}
-
-void libel_array_to_quadrocpter(float p_array[9], Mathext__quadrocopter_state* q) {
-  q->kc_state_x = p_array[0];
-  q->kc_state_y = p_array[1];
-  q->kc_state_z = p_array[2];
-  q->kc_state_px = p_array[3];
-  q->kc_state_py = p_array[4];
-  q->kc_state_pz = p_array[5];
-  q->kc_state_d0 = p_array[6];
-  q->kc_state_d1 = p_array[7];
-  q->kc_state_d2 = p_array[8];
-}
-
-void libel_matrix_to_covariance_matrix(float p_array[9][9], Mathext__covariance_matrix* p) {
-  libel_array_to_quadrocpter(p_array[0], &p->kc_state_X);
-  libel_array_to_quadrocpter(p_array[1], &p->kc_state_Y);
-  libel_array_to_quadrocpter(p_array[2], &p->kc_state_Z);
-  libel_array_to_quadrocpter(p_array[3], &p->kc_state_PX);
-  libel_array_to_quadrocpter(p_array[4], &p->kc_state_PY);
-  libel_array_to_quadrocpter(p_array[5], &p->kc_state_PZ);
-  libel_array_to_quadrocpter(p_array[6], &p->kc_state_D0);
-  libel_array_to_quadrocpter(p_array[7], &p->kc_state_D1);
-  libel_array_to_quadrocpter(p_array[8], &p->kc_state_D2);
-}
-
-void libel_from_coreData(kalmanCoreData_t *in, Libel__kalman_coredata_t *out){
-  libel_array_to_quadrocpter(in->S, &out->s);
-  libel_from_quaternion_kalman(in->q, &out->q);
-  memcpy( out->r, in->R,sizeof(float)*3*3);
-  libel_matrix_to_covariance_matrix(in->P, &out->p);
-  libel_from_quaternion_kalman(in->initialQuaternion, &out->initial_quaternion);
-}
-
-void libel_to_coreData(Libel__kalman_coredata_t *in, kalmanCoreData_t *out){
-  libel_quadrocopter_to_array(&in->s, out->S);
-  libel_to_quaternion_kalman(&in->q, out->q);
-  memcpy(out->R, in->r,  sizeof(float)*3*3);
-  libel_covariance_matrix_to_matrix(&in->p, out->P);
-  out->Pm.numCols = 9;
-  out->Pm.numRows = 9;
-  out->Pm.pData = (float *) out->P;
-  libel_to_quaternion_kalman(&in->initial_quaternion, out->initialQuaternion);
-}
-
-void libel_to_attitude_kalman(Libel__attitude *in, attitude_t *out) {
-    out->roll = in->roll;
-    out->pitch = in->pitch;
-    out->yaw = in->yaw;
-}
-
-void libel_to_vec3_kalman(Libel__vec3 *in, struct vec3_s *out) {
-    out->x = in->x;
-    out->y = in->y;
-    out->z = in->z;
-}
-
-void libel_to_quaternion2_kalman(Libel__quaternion *in, quaternion_t *out) {
-    out->x = in->qx;
-    out->y = in->qy;
-    out->z = in->qz;
-    out->w = in->qw;
-}
-
-void libel_to_state_kalman(Libel__state_t *in, state_t *out){
-  libel_to_attitude_kalman(&in->st_attitude, &out->attitude);
-  libel_to_quaternion2_kalman(&in->st_attitude_quat, &out->attitudeQuaternion);
-  libel_to_vec3_kalman(&in->st_position, &out->position);
-  libel_to_vec3_kalman(&in->st_velocity, &out->velocity);
-  libel_to_vec3_kalman(&in->st_acc, &out->acc);
-}
-
 
 // Debugging libel
+static kalmanCoreData_t libel_coredata;
+static Mathext__kalman_coredata_t kalman_coredata;
 static float S_libel[9];
 void relayLibelState(float S[9]){
   for(int i=0; i<9; i++){
@@ -507,17 +303,17 @@ void relayLibelState(float S[9]){
   }
 }
 
-static float Libel_P[9][9];
-static arm_matrix_instance_f32 Libel_Pm;
+static float P_libel[9][9];
+static arm_matrix_instance_f32 Pm_libel;
 
 
 void relayLibelCovarianceMatrix(float P[9][9]){
-  Libel_Pm.numCols =9;
-  Libel_Pm.numRows = 9;
-  Libel_Pm.pData = (float*) Libel_P;
+  Pm_libel.numCols =9;
+  Pm_libel.numRows = 9;
+  Pm_libel.pData = (float*) P_libel;
   for(int i = 0; i<9; i++){
     for(int j = 0; j <9; j++){
-      Libel_P[i][j] = P[i][j];
+      P_libel[i][j] = P[i][j];
     }
   }
   return;
@@ -549,10 +345,9 @@ static void kalmanTask(void* parameters) {
   uint32_t lastPNUpdate = xTaskGetTickCount();
 
   rateSupervisorInit(&rateSupervisorContext, xTaskGetTickCount(), ONE_SECOND, PREDICT_RATE - 1, PREDICT_RATE + 1, 1);
-  int count = 0;
+  int count = 512;
   while (true) {
-    //DEBUG_PRINT("Kalman now\n") ;
-    waitTime = usecTimestamp();
+    do_print_debug();
     xSemaphoreTake(runTaskSemaphore, portMAX_DELAY);
     startTime = usecTimestamp();
     // If the client triggers an estimator reset via parameter update
@@ -592,7 +387,25 @@ static void kalmanTask(void* parameters) {
     {
       float dt = T2S(osTick - lastPNUpdate);
       if (dt > 0.0f) {
+        dt = 0.001f;
+        libel_from_coreData(&coreData,&kalman_coredata);
+
+        tmpTime = usecTimestamp();
         kalmanCoreAddProcessNoise(&coreData, &coreParams, dt);
+        c_procNoiseTime = usecTimestamp() - tmpTime;
+        
+        if(debug_add_process_noise){
+          Libel__kalman_core_add_process_noise_out noise_out;
+          tmpTime = usecTimestamp();
+          Libel__kalman_core_add_process_noise_step(
+            kalman_coredata,
+            &noise_out
+          );
+          libel_procNoiseTime = usecTimestamp() - tmpTime;
+          libel_to_coreData(&noise_out.core_data_final, &libel_coredata);
+          equal_coredata("AddProcessNoise", &coreData, &libel_coredata);
+        }
+        
         lastPNUpdate = osTick;
       }
     }
@@ -612,9 +425,32 @@ static void kalmanTask(void* parameters) {
 
     if (doneUpdate)
     {
+      if(debug_finalize || debug_state_within_bounds)
+        libel_from_coreData(&coreData,&kalman_coredata);
+      
+      tmpTime = usecTimestamp();
       kalmanCoreFinalize(&coreData, osTick);
+      c_finalizeTime = usecTimestamp() - tmpTime;
       STATS_CNT_RATE_EVENT(&finalizeCounter);
-      if (! kalmanSupervisorIsStateWithinBounds(&coreData)) {
+      
+      tmpTime = usecTimestamp();
+      int isOk = kalmanSupervisorIsStateWithinBounds(&coreData);
+      c_stateInBoundsTime = usecTimestamp() - tmpTime;
+      if(debug_state_within_bounds){
+        Libel__kalman_supervisor_is_state_within_bounds_out is_state_within_bounds_out;
+        tmpTime = usecTimestamp();
+        Libel__kalman_supervisor_is_state_within_bounds_step(
+          kalman_coredata,
+          &is_state_within_bounds_out
+        );
+        libel_stateInBoundsTime = usecTimestamp() - tmpTime;
+        int is_ok = is_state_within_bounds_out.ok;
+        if(is_ok != isOk){
+          DEBUG_PRINT("ERROR in State within bounds! Expected: %i Got: %i", isOk, is_ok);
+        }
+      }
+
+      if (! isOk) {
         resetEstimation = true;
 
         if (osTick > warningBlockTime) {
@@ -622,6 +458,19 @@ static void kalmanTask(void* parameters) {
           DEBUG_PRINT("State out of bounds, resetting\n");
         }
       }
+
+      if(debug_finalize){
+        Libel__kalman_core_finalize_out finalize_out;
+        Libel__kalman_core_finalize_mem finalize_mem;
+        tmpTime = usecTimestamp();
+        Libel__kalman_core_finalize_step(
+          kalman_coredata,
+          &finalize_out, &finalize_mem
+        );
+        libel_finalizeTime = usecTimestamp() - tmpTime;
+        libel_to_coreData(&finalize_out.this_final, &libel_coredata);
+        equal_coredata("Finalize",&coreData, &libel_coredata);
+        }
     }
 
     /**
@@ -629,8 +478,30 @@ static void kalmanTask(void* parameters) {
      * This is done every round, since the external state includes some sensor data
      */
     xSemaphoreTake(dataMutex, portMAX_DELAY);
+    if(debug_externalize){
+      libel_from_coreData(&coreData,&kalman_coredata);  
+    }
+    tmpTime = usecTimestamp();
     kalmanCoreExternalizeState(&coreData, &taskEstimatorState, &accLatest, osTick);
+    c_externalizeTime = usecTimestamp()- tmpTime;
     xSemaphoreGive(dataMutex);
+
+    if(debug_externalize){
+
+      Libel__vec3 acc_latest;
+      libel_from_axis3f_kalman(&accLatest, &acc_latest);
+      Libel__kalman_core_externalize_state_out externalize_out;
+      tmpTime = usecTimestamp();
+      Libel__kalman_core_externalize_state_step(
+        kalman_coredata,
+        acc_latest,
+        &externalize_out
+      );
+      libel_externalizeTime = usecTimestamp()- tmpTime;
+      state_t task_estimator_state;
+      libel_to_state_kalman(&externalize_out.st, &task_estimator_state);
+      equal_state(&taskEstimatorState, &task_estimator_state);
+    }
 
     STATS_CNT_RATE_EVENT(&updateCounter);
     endTime = usecTimestamp();
@@ -641,17 +512,15 @@ static void kalmanTask(void* parameters) {
     }
     if(count >= 0 && count<LOG_LENGTH){
       // fill buffer
-      startTimes[count] = startTime;
-      endTimes[count] = endTime;
-      waitTimes[count] = waitTime;
-      iterations[count] = count%MAX_COUNT;
+      *startTimes[count] = startTime;
+      *endTimes[count] = endTime;
+      *iterations[count] = count%MAX_COUNT;
     }
     if(count>=0 && count%LOG_RATE == LOG_RATE-1){
       // get next timestamp every lograte loops
       for(int i =1; i < LOG_LENGTH; i++){
         startTimes[i-1] = startTimes[i];
         endTimes[i-1] = endTimes[i];
-        waitTimes[i-1] = waitTimes[i];
         iterations[i-1] = iterations[i];
       }
     }
@@ -674,9 +543,31 @@ void estimatorKalman(state_t *state, const uint32_t tick)
 }
 
 static bool predictStateForward(uint32_t osTick, float dt) {
-  //dt = 0.01;
-  Libel__kalman_coredata_t kalman_coredata;
+  dt = 0.01;
   
+  tmpTime = usecTimestamp();
+  if(false){
+    Libel__vec3 acc_accumulator;
+    Libel__vec3 gyro_accumulator;
+    libel_from_coreData(&coreData, &kalman_coredata);
+    libel_from_axis3f_kalman(&accAccumulator, &acc_accumulator);
+    libel_from_axis3f_kalman(&gyroAccumulator, &gyro_accumulator);
+    Libel__predict_state_forward_out predict_state_forward_out;
+    Libel__predict_state_forward_mem predict_state_forward_mem;
+    
+    Libel__predict_state_forward_step(
+      kalman_coredata, 
+      (float) gyroAccumulatorCount,
+      (float) accAccumulatorCount,
+      gyro_accumulator,
+      acc_accumulator,
+      &predict_state_forward_out, 
+      &predict_state_forward_mem
+    );
+    libel_predStFwdTime = usecTimestamp() - tmpTime;
+    libel_to_coreData(&predict_state_forward_out.core_data_updated, &libel_coredata);
+  }
+  tmpTime = usecTimestamp();
   if (gyroAccumulatorCount == 0
       || accAccumulatorCount == 0)
   {
@@ -703,38 +594,34 @@ static bool predictStateForward(uint32_t osTick, float dt) {
 
   quadIsFlying = supervisorIsFlying();
   
-  int debug = do_print_debug();
-  if(debug){
-    Libel__vec3 acc_average;
-    Libel__vec3 gyro_average;
+  if(debug_predict_state_forward){
+    Libel__vec3 acc;
+    Libel__vec3 gyro;
     libel_from_coreData(&coreData, &kalman_coredata);
-    libel_from_axis3f_kalman(&accAverage, &acc_average);
-    libel_from_axis3f_kalman(&gyroAverage, &gyro_average);
+    libel_from_axis3f_kalman(&accAverage, &acc);
+    libel_from_axis3f_kalman(&gyroAverage, &gyro);
     Libel__kalman_core_predict_out kalman_core_predict_out;
     Libel__kalman_core_predict_mem kalman_core_predict_mem;
-
+    
     Libel__kalman_core_predict_step(
       kalman_coredata, 
-      acc_average,
-      gyro_average,
-      (float) dt, 
-      (bool) quadIsFlying, 
-      &kalman_core_predict_out, &kalman_core_predict_mem
+      acc, gyro, 
+      dt, (int) quadIsFlying,
+      &kalman_core_predict_out, 
+      &kalman_core_predict_mem
     );
     libel_to_coreData(&kalman_core_predict_out.this_updated, &libel_coredata);
   }
-  
-  
-  kalmanCorePredict(&coreData, &accAverage, &gyroAverage, dt, quadIsFlying, Libel_Pm, S_libel, debug);
-  if(debug){
-    //equal_arm_matrix_f32("cov matrix out", coreData.Pm, Libel_Pm);
-    equal_coredata(&coreData, &libel_coredata);
+  kalmanCorePredict(&coreData, &accAverage, &gyroAverage, dt, quadIsFlying, Pm_libel, S_libel, false);
+  c_predStFwdTime = usecTimestamp() - tmpTime;
+  if(debug_predict_state_forward){
+    equal_coredata("KalmanCorePredict",&coreData, &libel_coredata);
   }
   return true;
 }
 
 
-static bool updateQueuedMeasurements(const uint32_t tick) {
+bool updateQueuedMeasurements(const uint32_t tick) {
   bool doneUpdate = false;
   /**
    * Sensor measurements can come in sporadically and faster than the stabilizer loop frequency,
@@ -742,8 +629,21 @@ static bool updateQueuedMeasurements(const uint32_t tick) {
    */
 
   // Pull the latest sensors values of interest; discard the rest
+  
   measurement_t m;
   while (estimatorDequeue(&m)) {
+    if(debug_update_measurement)
+      libel_from_coreData(&coreData, &kalman_coredata);
+    bool c_flow = false;
+    bool c_tof = false;
+    bool c_acc = false;
+    bool c_gyro = false;
+    Axis3f gyroAccumulator_old = gyroAccumulator;
+    Axis3f gyroLatest_old = gyroLatest;
+    int gyroAccumulatorCount_old = gyroAccumulatorCount;
+    Axis3f accAccumulator_old = accAccumulator;
+    Axis3f accLatest_old = accLatest;
+    int accAccumulatorCount_old = accAccumulatorCount;
     switch (m.type) {
       case MeasurementTypeTDOA:
         if(robustTdoa){
@@ -774,6 +674,8 @@ static bool updateQueuedMeasurements(const uint32_t tick) {
         doneUpdate = true;
         break;
       case MeasurementTypeTOF:
+        c_tof = true;
+        libel_tof = *((Libel__tof*)  &m.data.tof);
         kalmanCoreUpdateWithTof(&coreData, &m.data.tof);
         doneUpdate = true;
         break;
@@ -782,7 +684,9 @@ static bool updateQueuedMeasurements(const uint32_t tick) {
         doneUpdate = true;
         break;
       case MeasurementTypeFlow:
-        kalmanCoreUpdateWithFlow(&coreData, &m.data.flow, &gyroLatest);
+        c_flow = true;
+        libel_flow = *((Libel__flow*)  &(m.data.flow));
+        kalmanCoreUpdateWithFlow(&coreData, &m.data.flow, &gyroLatest, S_libel);
         doneUpdate = true;
         break;
       case MeasurementTypeYawError:
@@ -794,6 +698,8 @@ static bool updateQueuedMeasurements(const uint32_t tick) {
         doneUpdate = true;
         break;
       case MeasurementTypeGyroscope:
+        c_gyro = true;
+        libel_gyro = *((Libel__vec3*)  &m.data.gyroscope.gyro);
         gyroAccumulator.x += m.data.gyroscope.gyro.x;
         gyroAccumulator.y += m.data.gyroscope.gyro.y;
         gyroAccumulator.z += m.data.gyroscope.gyro.z;
@@ -801,6 +707,8 @@ static bool updateQueuedMeasurements(const uint32_t tick) {
         gyroAccumulatorCount++;
         break;
       case MeasurementTypeAcceleration:
+        c_acc = true;
+        libel_acc = *((Libel__vec3*)  &m.data.acceleration.acc);
         accAccumulator.x += m.data.acceleration.acc.x;
         accAccumulator.y += m.data.acceleration.acc.y;
         accAccumulator.z += m.data.acceleration.acc.z;
@@ -816,8 +724,30 @@ static bool updateQueuedMeasurements(const uint32_t tick) {
       default:
         break;
     }
+    if(debug_update_measurement){
+      //DEBUG_PRINT("c_flow %d, c_tof %d, c_acc %d, c_gyro %d\n", (int) c_flow, (int) c_tof, (int) c_acc, (int) c_gyro);
+      Libel__update_measurement_out update_out;
+      Libel__update_measurement_step(kalman_coredata, c_flow, c_tof, c_acc, c_gyro, libel_flow, libel_tof, libel_acc, libel_gyro, *((Libel__vec3*) &accAccumulator_old),*((Libel__vec3*) &gyroAccumulator_old), (float) accAccumulatorCount_old, (float) gyroAccumulatorCount_old, *((Libel__vec3*) &accLatest_old), *((Libel__vec3*) &gyroLatest_old), &update_out);
+      libel_to_coreData(&update_out.core_data_updated, &libel_coredata);
+      equal_float_array("accAccumulator", &update_out.acc_accumulator_updated, &accAccumulator, 3);
+      equal_float_array("gyroAccumulator", &update_out.gyro_accumulator_updated, &gyroAccumulator, 3);
+      equal_float_array("accLatest", &update_out.acc_latest_updated, &accLatest, 3);
+      equal_float_array("gyroLatest", &update_out.gyro_latest_updated, &gyroLatest, 3);
+      equal_floats("accAccumulatorCount", update_out.acc_accumulator_count_updated, (float) accAccumulatorCount);
+      equal_floats("gyroAccumulatorCount", update_out.gyro_accumulator_count_updated, (float) gyroAccumulatorCount);
+      if(c_acc)
+        equal_coredata("UpdateAcc", &coreData, &libel_coredata);
+      else if(c_flow)
+        equal_coredata("UpdateFlow", &coreData, &libel_coredata);
+      else if(c_gyro)
+        equal_coredata("UpdateGyro", &coreData, &libel_coredata);
+      else if(c_tof)
+        equal_coredata("UpdateTOF", &coreData, &libel_coredata);
+      else
+        equal_coredata("UpdateNone", &coreData, &libel_coredata);
+    }
   }
-
+  
   return doneUpdate;
 }
 
@@ -834,7 +764,7 @@ void estimatorKalmanInit(void)
   kalmanCoreInit(&coreData, &coreParams);
   kalmanCoreInit(&libel_coredata, &coreParams);
   DEBUG_PRINT("-------INIT DEBUG--------\n");
-  equal_coredata(&coreData, &libel_coredata);
+  equal_coredata("Init", &coreData, &libel_coredata);
 }
 
 bool estimatorKalmanTest(void)
@@ -853,13 +783,22 @@ void estimatorKalmanGetEstimatedRot(float * rotationMatrix) {
 }
 
 LOG_GROUP_START(timer)
-LOG_ADD(LOG_UINT32, kalmanwait, &waitTimes[0])
 LOG_ADD(LOG_UINT32, kalmanstart, &startTimes[0])
 LOG_ADD(LOG_UINT32, kalmanend, &endTimes[0])
-LOG_ADD(LOG_UINT8, kalmanloop, &iterations[0])
+LOG_ADD(LOG_UINT16, processnoise_libel, &libel_procNoiseTime)
+
+//LOG_ADD(LOG_UINT16, predictstateforward_libel, &libel_predStFwdTime)
+
+LOG_ADD(LOG_UINT16, finalize_libel, &libel_finalizeTime)
+LOG_ADD(LOG_UINT16, externalize_libel, &libel_externalizeTime)
+LOG_ADD(LOG_UINT16, stateinbounds_libel, &libel_stateInBoundsTime)
+
+LOG_ADD(LOG_UINT16, processnoise_c, &c_procNoiseTime)
+//LOG_ADD(LOG_UINT16, predictstateforward_c, &c_predStFwdTime)
+LOG_ADD(LOG_UINT16, finalize_c, &c_finalizeTime)
+LOG_ADD(LOG_UINT16, externalize_c, &c_externalizeTime)
+LOG_ADD(LOG_UINT16, stateinbounds_c, &c_stateInBoundsTime) 
 LOG_GROUP_STOP(timer)
-
-
 
 /**
  * Variables and results from the Extended Kalman Filter
