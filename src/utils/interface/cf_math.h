@@ -38,7 +38,7 @@
 #include "cfassert.h"
 
 
-#define DEG_TO_RAD (PI/180.0f)
+#define DEG_TO_RAD 0.017453 // TODO adjusted to libel value  0.017453, was (PI/180.0f) = 0.01745329251...
 #define RAD_TO_DEG (180.0f/PI)
 
 #define MIN(a, b)           \

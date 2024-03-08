@@ -41,6 +41,7 @@ void kalmanCoreUpdateWithFlow(kalmanCoreData_t* this, const flowMeasurement_t *f
   float Npix = 30.0;                      // [pixels] (same in x and y)
   //float thetapix = DEG_TO_RAD * 4.0f;     // [rad]    (same in x and y)
   float thetapix = DEG_TO_RAD * 4.2f;
+  thetapix = 0.073304; // TITA adjusted to Libel value
   //~~~ Body rates ~~~
   // TODO check if this is feasible or if some filtering has to be done
   float omegax_b = gyro->x * DEG_TO_RAD;
