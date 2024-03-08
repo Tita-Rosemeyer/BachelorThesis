@@ -37,6 +37,7 @@ obj-y += pid.o
 obj-y += planner.o
 obj-y += platformservice.o
 obj-y += libel.o
+obj-y += tita_debug_functions.o
 obj-y += position_controller_indi.o
 obj-y += position_controller_pid.o
 obj-y += position_estimator_altitude.o
