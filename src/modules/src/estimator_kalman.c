@@ -686,7 +686,7 @@ bool updateQueuedMeasurements(const uint32_t tick) {
       case MeasurementTypeFlow:
         c_flow = true;
         libel_flow = *((Libel__flow*)  &(m.data.flow));
-        kalmanCoreUpdateWithFlow(&coreData, &m.data.flow, &gyroLatest, S_libel);
+        kalmanCoreUpdateWithFlow(&coreData, &m.data.flow, &gyroLatest);
         doneUpdate = true;
         break;
       case MeasurementTypeYawError:
