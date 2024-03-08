@@ -1,5 +1,4 @@
 open Mathext
-
 const pid_roll_rate_kp: float = 250.0
 const pid_roll_rate_ki: float = 500.0
 const pid_roll_rate_kd: float = 2.5
@@ -219,12 +218,7 @@ type attitude = {
      yaw : float
 }
 
-type quaternion = {
-     qx : float;
-     qy : float;
-     qz : float;
-     qw : float
-}
+
 
 type stab_mode = Disable | Abs | Velocity
 
@@ -254,7 +248,7 @@ type sensor_data = {
 type setpoint = {
      attitude : attitude;
      attitude_rate : attitude;
-     attitude_quat : quaternion;
+     attitude_quat : Mathext.quaternion;
      thrust : float;
      position : vec3;
      velocity : vec3;
@@ -265,7 +259,7 @@ type setpoint = {
 
 type state_t = {
      st_attitude : attitude;
-     st_attitude_quat : quaternion;
+     st_attitude_quat : Mathext.quaternion;
      st_position : vec3;
      st_velocity : vec3;
      st_acc : vec3
@@ -612,6 +606,15 @@ type tof = {
     stdDev   : float
 }
 
+type flow = {
+    timestamp2: int;
+    dpixelx: float;
+    dpixely: float;
+    std_dev_x: float;
+    std_dev_y: float;
+    dt: float
+}
+
 type sensor_data_est = {
     acc_est : vec3;
     gyro_est : vec3;
@@ -631,7 +634,7 @@ let
                 z = acc.z *. recipNorm};
 tel
 
-fun normalize_quat(q: quaternion) returns (q_norm: quaternion);
+fun normalize_quat(q: Mathext.quaternion) returns (q_norm: Mathext.quaternion);
 var recipNorm: float;
 let
     recipNorm = invSqrt((q.qw *. q.qw) +. (q.qx *. q.qx) +. (q.qy *. q.qy) +. (q.qz *. q.qz));
@@ -643,7 +646,7 @@ tel
 
 (* Estimated direction of gyro and vector perpendicular to magnetic flux *)
 (* Error is sum of cross product between estimated and measured direction of gyro *)
-fun getEstimatedGyroAndMagError(q: quaternion; acc_1: vec3)
+fun getEstimatedGyroAndMagError(q: Mathext.quaternion; acc_1: vec3)
 returns (halfe: vec3);
 var halfvx, halfvy, halfvz : float;
 let
@@ -673,8 +676,8 @@ let
 tel
 
 (* Integrate rate of change of quaternion *)
-fun integrateQuaternion(q: quaternion; gyro: vec3)
-returns (q_new: quaternion);
+fun integrateQuaternion(q: Mathext.quaternion; gyro: vec3)
+returns (q_new: Mathext.quaternion);
 var dt: float;
     gx, gy, gz : float;
     qa, qb, qc, qz : float;
@@ -710,13 +713,13 @@ tel
 (* sensfusion6 *)
 
 node sensfusion6_update_QImpl(gyro: vec3; acc: vec3)
-returns (last q: quaternion = {qw = 1.0; qx = 0.0; qy = 0.0; qz = 0.0});
+returns (last q: Mathext.quaternion = {qw = 1.0; qx = 0.0; qy = 0.0; qz = 0.0});
 var gyro0 : vec3;
     last acc_1 : vec3 = {x = 0.0; y = 0.0; z = 0.0};
     last halfe : vec3 = {x = 0.0; y = 0.0; z = 0.0};
     last gyro1 : vec3 = {x = 0.0; y = 0.0; z = 0.0};
     last gyro2 : vec3 = {x = 0.0; y = 0.0; z = 0.0};
-    q_temp : quaternion;
+    q_temp : Mathext.quaternion;
 let
     gyro0={ x = (gyro.x *. pi_f) /. 180.0;
             y = (gyro.y *. pi_f) /. 180.0;
@@ -739,7 +742,7 @@ let
 tel
 
 node sensfusion6_update_Q(gyro: vec3; acc: vec3)
-returns (q: quaternion; grav: vec3; last baseZacc: float = 0.0);
+returns (q: Mathext.quaternion; grav: vec3; last baseZacc: float = 0.0);
 var last is_calibrated : bool = false;
 let
     q = sensfusion6_update_QImpl(gyro, acc);
@@ -755,7 +758,7 @@ let
     end;
 tel
 
-fun sensfusion6_get_euler_rpy(q: quaternion; grav: vec3)
+fun sensfusion6_get_euler_rpy(q: Mathext.quaternion; grav: vec3)
 returns (attitude: attitude);
 var gx: float;
 let
@@ -810,7 +813,7 @@ returns (st : state_t);
 var freq_att_update, freq_pos_update : bool;
     last grav: vec3 = {x = 0.0; y = 0.0; z = 0.0};
     last st_attitude_this: attitude = {roll = 0.0; pitch = 0.0; yaw = 0.0};
-    last st_attitude_quat_this: quaternion = {qw = 1.0; qx = 0.0; qy = 0.0; qz = 0.0};
+    last st_attitude_quat_this: Mathext.quaternion = {qw = 1.0; qx = 0.0; qy = 0.0; qz = 0.0};
     last st_acc_z: float = 0.0;
     last baseZacc: float = 0.0;
     last velocityZ: float = 0.0;
@@ -885,7 +888,7 @@ const max_covariance: float = 100.0
 const min_covariance: float = 0.000001
 
 const predict_rate: int = 100
-const deg_ro_rad: float = pi_f /. 180.0
+const deg_to_rad: float = pi_f /. 180.0
 const rad_to_deg: float = 180.0 /. pi_f
 const gravity_magnitude: float = 9.81
 const eps: float = 0.000001
@@ -907,13 +910,6 @@ const kc_state_d1: int = 7
 const kc_state_d2: int = 8
 const kc_state_dim: int = 9 *)
 
-type kalman_coredata_t = {
-    s: Mathext.quadrocopter_state;
-    q: quaternion;
-    r: float^3^3;
-    p: Mathext.covariance_matrix;
-    initial_quaternion: quaternion
-}
 
 type kalman_core_params = {
     std_dev_initial_position_xy: float;
@@ -985,7 +981,7 @@ const null_quadrocopter_state: Mathext.quadrocopter_state = {
 
 const init_vec3: vec3 = {x = 0.0; y = 0.0; z = 0.0}
 
-const init_core_data: kalman_coredata_t = {
+const init_core_data: Mathext.kalman_coredata_t = {
     s = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
     q = { qx = 0.0; qy = 0.0; qz = 0.0; qw = 1.0};
     r = [ [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
@@ -993,12 +989,12 @@ const init_core_data: kalman_coredata_t = {
         kc_state_X = { kc_state_x = 10000.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
         kc_state_Y = { kc_state_x = 0.0; kc_state_y = 10000.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
         kc_state_Z = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 1.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
-        kc_state_PX = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.00001; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
-        kc_state_PY = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.00001; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
-        kc_state_PZ = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.00001; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
-        kc_state_D0 = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.00001; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
-        kc_state_D1 = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.00001; kc_state_d2 = 0.0};
-        kc_state_D2 = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.00001}
+        kc_state_PX = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0001; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
+        kc_state_PY = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0001; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
+        kc_state_PZ = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0001; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
+        kc_state_D0 = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0001; kc_state_d1 = 0.0; kc_state_d2 = 0.0};
+        kc_state_D1 = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0001; kc_state_d2 = 0.0};
+        kc_state_D2 = { kc_state_x = 0.0; kc_state_y = 0.0; kc_state_z = 0.0; kc_state_px = 0.0; kc_state_py = 0.0; kc_state_pz = 0.0; kc_state_d0 = 0.0; kc_state_d1 = 0.0; kc_state_d2 = 0.0001}
     };
     initial_quaternion = { qx = 0.0; qy = 0.0; qz = 0.0; qw = 1.0}
 }
@@ -1091,10 +1087,10 @@ let
 tel
 
 node prediction_step(s: Mathext.quadrocopter_state; r: float^3^3; 
-                    q, initial_q: quaternion; 
+                    q, initial_q: Mathext.quaternion; 
                     quad_is_flying: bool;
                     acc, gyro: vec3; dt: float)
-returns (s_updated: Mathext.quadrocopter_state; q_updated: quaternion);
+returns (s_updated: Mathext.quadrocopter_state; q_updated: Mathext.quaternion);
 var dt2, norm: float;
     dx, dy, dz: float;
     tmpSPX, tmpSPY, tmpSPZ: float;
@@ -1165,20 +1161,20 @@ let
         tmpq1_1 = keep*.tmpq1 +. rollpitch_zero_reversion*.initial_q.qx;
         tmpq2_1 = keep*.tmpq2 +. rollpitch_zero_reversion*.initial_q.qy;
         tmpq3_1 = keep*.tmpq3 +. rollpitch_zero_reversion*.initial_q.qz;
-        norm = arm_sqrt(tmpq0_1*.tmpq0_1 +. tmpq1_1*.tmpq1_1 +. tmpq2_1*.tmpq2_1 +. tmpq3_1*.tmpq3_1);
+        norm = arm_sqrt(tmpq0_1*.tmpq0_1 +. tmpq1_1*.tmpq1_1 +. tmpq2_1*.tmpq2_1 +. tmpq3_1*.tmpq3_1) +. eps;
         q_updated = {qw = tmpq0_1 /. norm; qx = tmpq1_1 /. norm; qy = tmpq2_1 /. norm; qz = tmpq3_1 /. norm};
     | false do
-        norm = arm_sqrt(tmpq0*.tmpq0 +. tmpq1*.tmpq1 +. tmpq2*.tmpq2 +. tmpq3*.tmpq3);
+        norm = arm_sqrt(tmpq0*.tmpq0 +. tmpq1*.tmpq1 +. tmpq2*.tmpq2 +. tmpq3*.tmpq3) +. eps;
         q_updated = {qw = tmpq0 /. norm; qx = tmpq1 /. norm; qy = tmpq2 /. norm; qz = tmpq3 /. norm};
     end;
 tel
 
 
-node kalman_core_predict(this: kalman_coredata_t; acc: vec3; gyro: vec3; dt: float; quad_is_flying: bool)
-returns (this_updated: kalman_coredata_t);
+node kalman_core_predict(this: Mathext.kalman_coredata_t; acc: vec3; gyro: vec3; dt: float; quad_is_flying: bool)
+returns (this_updated: Mathext.kalman_coredata_t);
 var am, am_temp: Mathext.covariance_matrix;
     s_updated: Mathext.quadrocopter_state;
-    q_updated: quaternion;
+    q_updated: Mathext.quaternion;
 let
     am_temp = linearize(this.r, this.s, gyro, dt);
     am = covariance_update(am_temp, this.p);
@@ -1190,10 +1186,10 @@ let
                     initial_quaternion = this.initial_quaternion};
 tel
 
-node predict_state_forward( core_data: kalman_coredata_t;
+node predict_state_forward( core_data: Mathext.kalman_coredata_t;
                             gyro_accumulator_count, acc_accumulator_count: float;
                             gyro_accumulator, acc_accumulator: vec3;)
-returns (core_data_updated: kalman_coredata_t;
+returns (core_data_updated: Mathext.kalman_coredata_t;
         gyro_acc_count_updated, acc_acc_count_updated: float;
         gyro_accumulator_updated, acc_accumulator_updated: vec3);
 var last gyro_average: vec3 = {x = 0.0; y = 0.0; z = 0.0};
@@ -1210,9 +1206,9 @@ let
         acc_acc_count_updated = 0.0;
         core_data_updated = core_data;
     | false do
-        gyro_average = {x = gyro_accumulator.x *. deg_ro_rad /. gyro_accumulator_count;
-                        y = gyro_accumulator.y *. deg_ro_rad /. gyro_accumulator_count;
-                        z = gyro_accumulator.z *. deg_ro_rad /. gyro_accumulator_count};
+        gyro_average = {x = gyro_accumulator.x *. deg_to_rad /. gyro_accumulator_count;
+                        y = gyro_accumulator.y *. deg_to_rad /. gyro_accumulator_count;
+                        z = gyro_accumulator.z *. deg_to_rad /. gyro_accumulator_count};
 
         acc_average = { x = acc_accumulator.x *. gravity_magnitude /. acc_accumulator_count;
                         y = acc_accumulator.y *. gravity_magnitude /. acc_accumulator_count;
@@ -1227,12 +1223,12 @@ let
     end;
 tel
 
-node kalman_core_add_process_noise(core_data: kalman_coredata_t)
-returns (core_data_final: kalman_coredata_t);
+node kalman_core_add_process_noise(core_data: Mathext.kalman_coredata_t)
+returns (core_data_final: Mathext.kalman_coredata_t);
 var dt: float;
-    core_data_updated: kalman_coredata_t;
+    core_data_updated: Mathext.kalman_coredata_t;
 let
-    dt = 1.0/.rate_1000_hz;
+    dt = 0.001;
     core_data_updated = { core_data with
         .p = {
             kc_state_X = { core_data.p.kc_state_X with .kc_state_x = core_data.p.kc_state_X.kc_state_x +. power((params.proc_noise_acc_xy*.dt*.dt +. params.proc_noise_vel*.dt +. params.proc_noise_pos), 2.0)};
@@ -1249,10 +1245,10 @@ let
     core_data_final = {core_data_updated with .p = enforce_covariance_matrix_symmetry(core_data_updated.p)};
 tel
 
-node move_attitude_error_to_attitude(q: quaternion;
+node move_attitude_error_to_attitude(q: Mathext.quaternion;
                                     kc_state_d0, kc_state_d1, kc_state_d2: float;
                                     p: Mathext.covariance_matrix)
-returns (q_updated: quaternion; p_updated: Mathext.covariance_matrix);
+returns (q_updated: Mathext.quaternion; p_updated: Mathext.covariance_matrix);
 var last am: Mathext.covariance_matrix = null_matrix;
     v0, v1, v2: float;
     last angle: float = 0.0;
@@ -1317,7 +1313,7 @@ let
     end;
 tel
 
-node convert_attitude_to_rotation_matrix(q: quaternion)
+node convert_attitude_to_rotation_matrix(q: Mathext.quaternion)
 returns (r: float^3^3);
 let
     r =[[ q.qw*.q.qw +. q.qx*.q.qx -. q.qy*.q.qy -. q.qz*.q.qz,
@@ -1334,9 +1330,9 @@ let
     ];
 tel
 
-node kalman_core_finalize(this: kalman_coredata_t)
-returns (this_final: kalman_coredata_t);
-var q_updated: quaternion;
+node kalman_core_finalize(this: Mathext.kalman_coredata_t)
+returns (this_final: Mathext.kalman_coredata_t);
+var q_updated: Mathext.quaternion;
     p_updated: Mathext.covariance_matrix;
     r_updated: float^3^3;
     s_updated: Mathext.quadrocopter_state;
@@ -1365,7 +1361,7 @@ let
     };
 tel
 
-node kalman_supervisor_is_state_within_bounds(this: kalman_coredata_t)
+node kalman_supervisor_is_state_within_bounds(this: Mathext.kalman_coredata_t)
 returns (ok: bool);
 let
     ok = if (this.s.kc_state_x >. max_position or this.s.kc_state_x <. -.max_position or
@@ -1378,7 +1374,7 @@ let
         else true;
 tel
 
-node kalman_core_externalize_state(this: kalman_coredata_t; acc: vec3)
+node kalman_core_externalize_state(this: Mathext.kalman_coredata_t; acc: vec3)
 returns (st: state_t);
 var roll, pitch, yaw: float;
 let
@@ -1397,7 +1393,7 @@ let
 
         st_acc = {  x = this.r[0][0]*.acc.x +. this.r[0][1]*.acc.y +. this.r[0][2]*.acc.z;
                     y = this.r[1][0]*.acc.x +. this.r[1][1]*.acc.y +. this.r[1][2]*.acc.z;
-                    z = this.r[2][0]*.acc.x +. this.r[2][1]*.acc.y +. this.r[2][2]*.acc.z};
+                    z = this.r[2][0]*.acc.x +. this.r[2][1]*.acc.y +. this.r[2][2]*.acc.z -. 1.0};
 
         st_attitude = { roll = roll*.rad_to_deg;
                         pitch = -.(pitch*.rad_to_deg);
@@ -1410,23 +1406,128 @@ let
     };
 tel
 
-(* main kalman task *)
 
-node kalman_task(core_data: kalman_coredata_t;
+
+(* TITA: updateQueuedMeasurements stuff *)
+(* kalmanCoreScalarUpdate in Mathext, need to add 
+updates for measurement types TOF, flow and Baro *)
+
+(* Measurement Type TOF *)
+node kalman_core_update_with_tof(core_data: Mathext.kalman_coredata_t; measurement: tof )
+returns (core_data_updated: Mathext.kalman_coredata_t);
+var h : Mathext.quadrocopter_state;
+    angle, predicted_distance, measured_distance: float;
+let
+    angle = if fabs(acos(core_data.r[2][2])) -. deg_to_rad *. (15.0 /. 2.0) <. 0.0 then 0.0 else fabs(acos(core_data.r[2][2])) -. deg_to_rad *. (15.0 /. 2.0);
+    predicted_distance = core_data.s.kc_state_z /. core_data.r[2][2];
+    measured_distance = measurement.distance;
+    h = {  null_quadrocopter_state with .kc_state_z = 1.0 /. core_data.r[2][2]};
+    core_data_updated = 
+        if (fabs(core_data.r[2][2]) >. 0.1 & core_data.r[2][2]>.0.0) then 
+            kalman_core_scalar_update(core_data, h, measured_distance -. predicted_distance, measurement.stdDev)
+        else 
+            core_data;
+tel
+
+node kalman_core_update_with_flow(core_data: Mathext.kalman_coredata_t; flow_measurement: flow; gyro: vec3)
+returns (core_data_updated: Mathext.kalman_coredata_t);
+var npix, thetapix, z_g, omega_factor: float; (* these are constants -> move somewhere else TODO*)
+    omegax_b, omegay_b, dx_g, dy_g: float;
+    hx, hy, hx_tmp, hy_tmp: Mathext.quadrocopter_state;
+    predicted_nx, measured_nx, predicted_ny, measured_ny: float;
+    core_data_tmp: Mathext.kalman_coredata_t;
+    print_state:bool;
+let
+    npix = 30.0;
+    thetapix = deg_to_rad *. 4.2;  (* TODO gets rounded to 0.073304, should be 0.0733038286, in c it is 0.073303824*)
+    omega_factor = 1.25;
+    omegax_b = gyro.x *. deg_to_rad;
+    omegay_b = gyro.y *. deg_to_rad;
+    dx_g = core_data.s.kc_state_px;
+    dy_g = core_data.s.kc_state_py;
+    z_g = if core_data.s.kc_state_z <. 0.1 then 0.1 else core_data.s.kc_state_z;
+
+    predicted_nx = (flow_measurement.dt *. npix /. thetapix) *.((dx_g *. core_data.r[2][2] /. z_g) +. omega_factor *. omegay_b);
+    measured_nx = flow_measurement.dpixelx;
+    hx_tmp = {null_quadrocopter_state with .kc_state_z = (npix *. flow_measurement.dt /. thetapix) *. ((core_data.r[2][2]*.dx_g)/.(-.z_g*.z_g))};
+    hx = {hx_tmp with .kc_state_px =(npix *. flow_measurement.dt /. thetapix) *. (core_data.r[2][2]/. z_g) };
+    core_data_tmp = kalman_core_scalar_update(core_data, hx, measured_nx -. predicted_nx, flow_measurement.std_dev_x);
+
+    predicted_ny = (flow_measurement.dt *. npix /. thetapix) *.((dy_g *. core_data.r[2][2] /. z_g) +. omega_factor *. omegax_b);
+    measured_ny = flow_measurement.dpixely;
+    hy_tmp = {null_quadrocopter_state with .kc_state_z = (npix *. flow_measurement.dt /. thetapix) *. ((core_data.r[2][2]*.dy_g)/.(-.z_g*.z_g))};
+    hy = {hy_tmp with .kc_state_py =(npix *. flow_measurement.dt /. thetapix) *. (core_data.r[2][2]/. z_g) };
+    print_state = relay_state(hy); (* Do not remove this line, otherwise it will store hy in the output and it will break *)
+    core_data_updated= kalman_core_scalar_update(core_data_tmp, hy, measured_ny -. predicted_ny, flow_measurement.std_dev_y);
+tel
+
+
+node update_accumulator(ck:bool; m: vec3 when ck; latest_m, accumulator: vec3; accumulator_count: float)
+returns (latest_m_updated, accumulator_updated: vec3; accumulator_count_updated: float);
+let
+    latest_m_updated = merge ck (true -> m) (false -> latest_m);
+    accumulator_count_updated = if ck then accumulator_count +. 1.0 else accumulator_count;
+    accumulator_updated = merge ck (true -> { x = accumulator.x when ck +. m.x;
+          y = accumulator.y when ck +. m.y;
+          z = accumulator.z when ck +. m.z }) (false -> accumulator when not ck);
+tel
+
+node update_measurement(this: Mathext.kalman_coredata_t ::.;
+    c_flow, c_tof, c_acc, c_gyro: bool :: .; 
+    m_flow: flow; m_tof: tof ::.; 
+    m_acc: vec3; m_gyro: vec3 ::.;
+    acc_accumulator, gyro_accumulator: vec3 ::.;
+    acc_accumulator_count, gyro_accumulator_count: float::.;
+    acc_latest, gyro_latest: vec3::.;
+    )
+returns (done_update: bool; core_data_updated: Mathext.kalman_coredata_t;
+acc_accumulator_updated, gyro_accumulator_updated: vec3;
+acc_accumulator_count_updated, gyro_accumulator_count_updated: float;
+acc_latest_updated, gyro_latest_updated: vec3;);
+let
+    (acc_latest_updated, acc_accumulator_updated, acc_accumulator_count_updated) = 
+        update_accumulator(c_acc, m_acc when c_acc, acc_latest when not c_acc, 
+                        acc_accumulator, acc_accumulator_count);
+    (gyro_latest_updated, gyro_accumulator_updated, gyro_accumulator_count_updated) = 
+        update_accumulator(c_gyro, m_gyro when c_gyro, gyro_latest when not c_gyro, 
+            gyro_accumulator, gyro_accumulator_count);
+    switch c_flow 
+    | true do
+        core_data_updated = kalman_core_update_with_flow(this, m_flow, gyro_latest);
+    | false do
+        switch c_tof 
+        | true do 
+            core_data_updated = kalman_core_update_with_tof(this, m_tof);
+        |false do 
+            core_data_updated = this;
+        end;
+    end;
+    done_update = c_flow or c_tof ;
+tel 
+
+(* main kalman task  *)
+
+node kalman_task(core_data: Mathext.kalman_coredata_t;
                 gyro_acc_count, acc_acc_count: float;
                 gyro_accumulator, acc_accumulator: vec3;
-                done_update: bool;
-                acc_latest: vec3)
-returns (st : state_t; core_data_3: kalman_coredata_t;
+                acc_latest, gyro_latest: vec3;
+                c_flow, c_tof, c_acc, c_gyro: bool;
+                m_flow: flow; m_tof: tof; 
+                m_acc: vec3; m_gyro: vec3)
+returns (st : state_t; core_data_4: Mathext.kalman_coredata_t;
         gyro_acc_count_updated, acc_acc_count_updated: float;
-        gyro_accumulator_updated, acc_accumulator_updated: vec3);
+        gyro_accumulator_updated, acc_accumulator_updated: vec3; 
+        acc_latest_updated, gyro_latest_updated: vec3;
+        done_update: bool);
 var 
     prediction_freq: bool;
-    core_data_0, core_data_1, core_data_2: kalman_coredata_t;
+    core_data_0, core_data_1, core_data_2, core_data_3: Mathext.kalman_coredata_t;
     last gyro_accumulator_temp: vec3 = {x = 0.0; y = 0.0; z = 0.0};
     last acc_accumulator_temp: vec3 = {x = 0.0; y = 0.0; z = 0.0};
     last gyro_acc_count_temp: float = 0.0;
     last acc_acc_count_temp: float = 0.0;
+    gyro_accumulator_temp_2, acc_accumulator_temp_2 : vec3;
+    gyro_acc_count_temp_2, acc_acc_count_temp_2: float;
     last reset_estimation: bool = false;
 let
     prediction_freq = everyn<<10>>();
@@ -1438,17 +1539,28 @@ let
         core_data_0 = core_data;
     end;
 
-    core_data_1 = kalman_core_add_process_noise(core_data);
+    core_data_1 = kalman_core_add_process_noise(core_data_0);
     
+
+    (done_update, core_data_2, 
+        acc_accumulator_temp_2, gyro_accumulator_temp_2, 
+        acc_acc_count_temp_2, gyro_acc_count_temp_2, 
+        acc_latest_updated, gyro_latest_updated) = 
+    update_measurement(core_data_1, c_flow, c_tof, c_acc, c_gyro, 
+        m_flow, m_tof, m_acc, m_gyro, 
+        acc_accumulator, gyro_accumulator, 
+        acc_acc_count, gyro_acc_count, 
+        acc_latest, gyro_latest);
+
     switch done_update
     | true do
-        core_data_2 = kalman_core_finalize(core_data);
-        reset_estimation = not kalman_supervisor_is_state_within_bounds(core_data_2);
+        core_data_3 = kalman_core_finalize(core_data_2);
+        reset_estimation = not kalman_supervisor_is_state_within_bounds(core_data_3);
     | false do
-        core_data_2 = core_data;
+        core_data_3 = core_data_2;
     end;
 
-    st = kalman_core_externalize_state(core_data_2, acc_latest);
+    st = kalman_core_externalize_state(core_data_3, acc_latest);
 
     switch (reset_estimation)
     | true do
@@ -1456,16 +1568,16 @@ let
         gyro_accumulator_updated = init_vec3;
         acc_acc_count_updated = 0.0;
         gyro_acc_count_updated = 0.0;
-        core_data_3 = init_core_data;
+        core_data_4 = init_core_data;
     | false do
-        acc_accumulator_updated = acc_accumulator_temp;
-        gyro_accumulator_updated = gyro_accumulator_temp;
-        acc_acc_count_updated = acc_acc_count_temp;
-        gyro_acc_count_updated = gyro_acc_count_temp;
-        core_data_3 = core_data_2;
+        acc_accumulator_updated = acc_accumulator_temp_2;
+        gyro_accumulator_updated = gyro_accumulator_temp_2;
+        acc_acc_count_updated = acc_acc_count_temp_2;
+        gyro_acc_count_updated = gyro_acc_count_temp_2;
+        core_data_4 = core_data_3;
     end;
 
-tel
+tel 
 
 
 (* ---------------------------------------------------------------------------------------- *)

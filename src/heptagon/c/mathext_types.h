@@ -161,12 +161,28 @@ typedef struct Mathext__covariance_matrix {
     Mathext__quadrocopter_state kc_state_D2;
 } Mathext__covariance_matrix;
 
+
+typedef struct Mathext__quaternion  {
+    float qx;
+    float qy;
+    float qz;
+    float qw
+} Mathext__quaternion;
+
+typedef struct Mathext__kalman_coredata_t {
+    Mathext__quadrocopter_state s;
+    Mathext__quaternion q;
+    float r[3][3];
+    Mathext__covariance_matrix p;
+    Mathext__quaternion initial_quaternion;
+} Mathext__kalman_coredata_t;
+
 typedef struct Mathext__covariance_update_out {
   Mathext__covariance_matrix p;
 } Mathext__covariance_update_out;
 
-void quadrocpter_to_array(Mathext__quadrocopter_state* q, float p_array[9]);
-void array_to_quadrocpter(float p_array[9], Mathext__quadrocopter_state* q);
+void quadrocopter_to_array(Mathext__quadrocopter_state* q, float p_array[9]);
+void array_to_quadrocopter(float p_array[9], Mathext__quadrocopter_state* q);
 void covariance_matrix_to_matrix(Mathext__covariance_matrix* p, float p_array[9][9]);
 void matrix_to_covariance_matrix(float p_array[9][9], Mathext__covariance_matrix* p);
 
@@ -197,6 +213,10 @@ typedef struct Mathext__relay_covariance_matrix_out {
 void Mathext__relay_covariance_matrix_step(Mathext__covariance_matrix p, Mathext__relay_covariance_matrix_out* _out);
 
 
+typedef struct Mathext__kalman_core_scalar_update_out {
+  Mathext__kalman_coredata_t core_data_updated;
+} Mathext__kalman_core_scalar_update_out;
+void Mathext__kalman_core_scalar_update_step(Mathext__kalman_coredata_t this, Mathext__quadrocopter_state h, float error, float stdMeasNoise, Mathext__kalman_core_scalar_update_out* _out);
 
 
 #endif // MATHEXT_H

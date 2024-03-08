@@ -104,7 +104,7 @@ void Mathext__arm_sin_f32_step(float x, Mathext__arm_sin_f32_out* _out) {
   _out->y = arm_sin_f32(x);
 }
 
-void quadrocpter_to_array(Mathext__quadrocopter_state* q, float p_array[9]) {
+void quadrocopter_to_array(Mathext__quadrocopter_state* q, float p_array[9]) {
   p_array[0] = q->kc_state_x;
   p_array[1] = q->kc_state_y;
   p_array[2] = q->kc_state_z;
@@ -117,18 +117,18 @@ void quadrocpter_to_array(Mathext__quadrocopter_state* q, float p_array[9]) {
 }
 
 void covariance_matrix_to_matrix(Mathext__covariance_matrix* p, float p_array[9][9]) {
-  quadrocpter_to_array(&p->kc_state_X, p_array[0]);
-  quadrocpter_to_array(&p->kc_state_Y, p_array[1]);
-  quadrocpter_to_array(&p->kc_state_Z, p_array[2]);
-  quadrocpter_to_array(&p->kc_state_PX, p_array[3]);
-  quadrocpter_to_array(&p->kc_state_PY, p_array[4]);
-  quadrocpter_to_array(&p->kc_state_PZ, p_array[5]);
-  quadrocpter_to_array(&p->kc_state_D0, p_array[6]);
-  quadrocpter_to_array(&p->kc_state_D1, p_array[7]);
-  quadrocpter_to_array(&p->kc_state_D2, p_array[8]);
+  quadrocopter_to_array(&p->kc_state_X, p_array[0]);
+  quadrocopter_to_array(&p->kc_state_Y, p_array[1]);
+  quadrocopter_to_array(&p->kc_state_Z, p_array[2]);
+  quadrocopter_to_array(&p->kc_state_PX, p_array[3]);
+  quadrocopter_to_array(&p->kc_state_PY, p_array[4]);
+  quadrocopter_to_array(&p->kc_state_PZ, p_array[5]);
+  quadrocopter_to_array(&p->kc_state_D0, p_array[6]);
+  quadrocopter_to_array(&p->kc_state_D1, p_array[7]);
+  quadrocopter_to_array(&p->kc_state_D2, p_array[8]);
 }
 
-void array_to_quadrocpter(float p_array[9], Mathext__quadrocopter_state* q) {
+void array_to_quadrocopter(float p_array[9], Mathext__quadrocopter_state* q) {
   q->kc_state_x = p_array[0];
   q->kc_state_y = p_array[1];
   q->kc_state_z = p_array[2];
@@ -141,15 +141,15 @@ void array_to_quadrocpter(float p_array[9], Mathext__quadrocopter_state* q) {
 }
 
 void matrix_to_covariance_matrix(float p_array[9][9], Mathext__covariance_matrix* p) {
-  array_to_quadrocpter(p_array[0], &p->kc_state_X);
-  array_to_quadrocpter(p_array[1], &p->kc_state_Y);
-  array_to_quadrocpter(p_array[2], &p->kc_state_Z);
-  array_to_quadrocpter(p_array[3], &p->kc_state_PX);
-  array_to_quadrocpter(p_array[4], &p->kc_state_PY);
-  array_to_quadrocpter(p_array[5], &p->kc_state_PZ);
-  array_to_quadrocpter(p_array[6], &p->kc_state_D0);
-  array_to_quadrocpter(p_array[7], &p->kc_state_D1);
-  array_to_quadrocpter(p_array[8], &p->kc_state_D2);
+  array_to_quadrocopter(p_array[0], &p->kc_state_X);
+  array_to_quadrocopter(p_array[1], &p->kc_state_Y);
+  array_to_quadrocopter(p_array[2], &p->kc_state_Z);
+  array_to_quadrocopter(p_array[3], &p->kc_state_PX);
+  array_to_quadrocopter(p_array[4], &p->kc_state_PY);
+  array_to_quadrocopter(p_array[5], &p->kc_state_PZ);
+  array_to_quadrocopter(p_array[6], &p->kc_state_D0);
+  array_to_quadrocopter(p_array[7], &p->kc_state_D1);
+  array_to_quadrocopter(p_array[8], &p->kc_state_D2);
 }
 
 void covariance_update(Mathext__covariance_matrix* am, Mathext__covariance_matrix* p) {
@@ -214,29 +214,112 @@ void Mathext__supervisor_is_flying_step(Mathext__supervisor_is_flying_out* _out)
   _out->ok = supervisorIsFlying();
 }
 
+
+
 #include "debug.h"
 #include "estimator_kalman.h"
 void Mathext__relay_state_step(Mathext__quadrocopter_state s, Mathext__relay_state_out* _out){
   float S[9];
-  /*S[0] = s.kc_state_x;
-  S[1] = s.kc_state_y;
-  S[2] = s.kc_state_z;
-  S[3] = s.kc_state_px;
-  S[4] = s.kc_state_py;
-  S[5] = s.kc_state_pz;
-  S[6] = s.kc_state_d0;
-  S[7] = s.kc_state_d1;
-  S[8] = s.kc_state_d2;*/
-  //DEBUG_PRINT("%.4f\n", s.kc_state_z);
-  quadrocpter_to_array(&s, S);
+  quadrocopter_to_array(&s, S);
   relayLibelState(S);
-  _out->ok = false;
-  //DEBUG_PRINT("(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f)\n", s.kc_state_x, s.kc_state_y, s.kc_state_z, s.kc_state_px, s.kc_state_py, s.kc_state_pz, s.kc_state_d0, s.kc_state_d1, s.kc_state_d2);
-}
+  _out->ok = true;
+  }
 
 void Mathext__relay_covariance_matrix_step(Mathext__covariance_matrix p, Mathext__relay_covariance_matrix_out* _out){
   float P[9][9];
   covariance_matrix_to_matrix(&p, P);
   relayLibelCovarianceMatrix(P);
   _out->ok = true;
+}
+
+
+
+// The bounds on the covariance, these shouldn't be hit, but sometimes are... why?
+#define MAX_COVARIANCE (100)
+#define MIN_COVARIANCE (1e-6f)
+
+void Mathext__kalman_core_scalar_update_step(Mathext__kalman_coredata_t this, Mathext__quadrocopter_state h, float error, float stdMeasNoise, Mathext__kalman_core_scalar_update_out* _out){
+  // convert lustre types to c types
+  __attribute__((aligned(4))) static float hm_array[KC_STATE_DIM];
+  quadrocopter_to_array(&h, &hm_array);
+  static arm_matrix_instance_f32 Hm = {1, KC_STATE_DIM, (float *)hm_array};
+
+  __attribute__((aligned(4))) static float S[KC_STATE_DIM];
+  quadrocopter_to_array(&this.s, &S);
+
+  __attribute__((aligned(4))) static float P[KC_STATE_DIM][KC_STATE_DIM];
+  covariance_matrix_to_matrix(&this.p, P);
+  static arm_matrix_instance_f32 Pm = {KC_STATE_DIM, KC_STATE_DIM, (float *)P};
+  
+
+
+  // The Kalman gain as a column vector
+  NO_DMA_CCM_SAFE_ZERO_INIT static float K[KC_STATE_DIM];
+  static arm_matrix_instance_f32 Km = {KC_STATE_DIM, 1, (float *)K};
+
+  // Temporary matrices for the covariance updates
+  NO_DMA_CCM_SAFE_ZERO_INIT __attribute__((aligned(4))) static float tmpNN1d[KC_STATE_DIM * KC_STATE_DIM];
+  static arm_matrix_instance_f32 tmpNN1m = {KC_STATE_DIM, KC_STATE_DIM, tmpNN1d};
+
+  NO_DMA_CCM_SAFE_ZERO_INIT __attribute__((aligned(4))) static float tmpNN2d[KC_STATE_DIM * KC_STATE_DIM];
+  static arm_matrix_instance_f32 tmpNN2m = {KC_STATE_DIM, KC_STATE_DIM, tmpNN2d};
+
+  NO_DMA_CCM_SAFE_ZERO_INIT __attribute__((aligned(4))) static float tmpNN3d[KC_STATE_DIM * KC_STATE_DIM];
+  static arm_matrix_instance_f32 tmpNN3m = {KC_STATE_DIM, KC_STATE_DIM, tmpNN3d};
+
+  NO_DMA_CCM_SAFE_ZERO_INIT __attribute__((aligned(4))) static float HTd[KC_STATE_DIM * 1];
+  static arm_matrix_instance_f32 HTm = {KC_STATE_DIM, 1, HTd};
+
+  NO_DMA_CCM_SAFE_ZERO_INIT __attribute__((aligned(4))) static float PHTd[KC_STATE_DIM * 1];
+  static arm_matrix_instance_f32 PHTm = {KC_STATE_DIM, 1, PHTd};
+
+  ASSERT(Hm.numRows == 1);
+  ASSERT(Hm.numCols == KC_STATE_DIM);
+
+  // ====== INNOVATION COVARIANCE ======
+
+  mat_trans(&Hm, &HTm);
+  mat_mult(&Pm, &HTm, &PHTm); // PH'
+  float R = stdMeasNoise*stdMeasNoise;
+  float HPHR = R; // HPH' + R
+  for (int i=0; i<KC_STATE_DIM; i++) { // Add the element of HPH' to the above
+    HPHR += Hm.pData[i]*PHTd[i]; // this obviously only works if the update is scalar (as in this function)
+  }
+  ASSERT(!isnan(HPHR));
+
+  // ====== MEASUREMENT UPDATE ======
+  // Calculate the Kalman gain and perform the state update
+  for (int i=0; i<KC_STATE_DIM; i++) {
+    K[i] = PHTd[i]/HPHR; // kalman gain = (PH' (HPH' + R )^-1)
+    S[i] = S[i] + K[i] * error; // state update
+  }
+
+  // ====== COVARIANCE UPDATE ======
+  mat_mult(&Km, &Hm, &tmpNN1m); // KH
+  for (int i=0; i<KC_STATE_DIM; i++) { tmpNN1d[KC_STATE_DIM*i+i] -= 1; } // KH - I
+  mat_trans(&tmpNN1m, &tmpNN2m); // (KH - I)'
+  mat_mult(&tmpNN1m, &Pm, &tmpNN3m); // (KH - I)*P
+  mat_mult(&tmpNN3m, &tmpNN2m, &Pm); // (KH - I)*P*(KH - I)'
+
+  // add the measurement variance and ensure boundedness and symmetry
+  // TODO: Why would it hit these bounds? Needs to be investigated.
+  for (int i=0; i<KC_STATE_DIM; i++) {
+    for (int j=i; j<KC_STATE_DIM; j++) {
+      float v = K[i] * R * K[j];
+      float p = 0.5f*P[i][j] + 0.5f*P[j][i] + v; // add measurement noise
+      if (isnan(p) || p > MAX_COVARIANCE) {
+        P[i][j] = P[j][i] = MAX_COVARIANCE;
+      } else if ( i==j && p < MIN_COVARIANCE ) {
+        P[i][j] = P[j][i] = MIN_COVARIANCE;
+      } else {
+        P[i][j] = P[j][i] = p;
+      }
+    }
+  }
+
+
+  // convert back to lustre types
+  array_to_quadrocopter(S,&this.s);
+  matrix_to_covariance_matrix(P,&this.p);
+  _out->core_data_updated = this;
 }

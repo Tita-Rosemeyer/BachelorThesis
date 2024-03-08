@@ -89,14 +89,14 @@ void libel_to_attitude_estimator(const Libel__attitude *in, attitude_t *out) {
     out->yaw = in->yaw;
 }
 
-void libel_from_quaternion_estimator(const quaternion_t *in, Libel__quaternion *out) {
+void libel_from_quaternion_estimator(const quaternion_t *in, Mathext__quaternion *out) {
     out->qx = in->x;
     out->qy = in->y;
     out->qz = in->z;
     out->qw = in->w;
 }
 
-void libel_to_quaternion_estimator(const Libel__quaternion *in, quaternion_t *out) {
+void libel_to_quaternion_estimator(const Mathext__quaternion *in, quaternion_t *out) {
     out->x = in->qx;
     out->y = in->qy;
     out->z = in->qz;

@@ -60,6 +60,19 @@ type covariance_matrix = {
     kc_state_D1: quadrocopter_state;
     kc_state_D2: quadrocopter_state
 }
+type quaternion = {
+     qx : float;
+     qy : float;
+     qz : float;
+     qw : float
+}
+type kalman_coredata_t = {
+    s: quadrocopter_state;
+    q: quaternion;
+    r: float^3^3;
+    p: covariance_matrix;
+    initial_quaternion: quaternion
+}
 external val fun covariance_update(am:covariance_matrix; p:covariance_matrix) returns (p: covariance_matrix)
 external val fun enforce_covariance_matrix_symmetry(p:covariance_matrix) returns(p:covariance_matrix)
 
@@ -73,3 +86,5 @@ external val fun kalman_core_externalize_state(core_data:kalman_coredata_t; task
 
 external val fun relay_state(s:quadrocopter_state) returns (ok:bool)
 external val fun relay_covariance_matrix(p:covariance_matrix) returns (ok:bool)
+
+external val fun kalman_core_scalar_update(this: kalman_coredata_t; h: quadrocopter_state; error: float; stdMeasNoise: float) returns (core_data_updated: kalman_coredata_t)
